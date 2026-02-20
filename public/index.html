@@ -261,6 +261,20 @@ tr:hover .ra3{opacity:1}
 .caln{font-size:11px;font-weight:600;margin-bottom:3px}
 .calev{font-size:9px;padding:2px 4px;border-radius:3px;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .calev.eb{background:var(--gbg);color:var(--gt)}.calev.ecb{background:var(--ybg);color:var(--yt)}.calev.ec{background:var(--bbg);color:var(--bt)}
+.calev.eappt{background:var(--accents);color:var(--accentt);font-weight:700}
+.calev.eappt-conf{background:var(--gbg);color:var(--gt);font-weight:700}
+.cald.calsel{box-shadow:inset 0 0 0 2px var(--accent) !important;background:var(--accents)}
+.cal-detail{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-top:16px;animation:modIn .2s ease}
+.cal-detail-head{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.cal-detail-sec{margin-bottom:18px}.cal-detail-sec:last-child{margin-bottom:0}
+.cal-detail-stitle{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.cal-appt-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px;background:var(--bg3);margin-bottom:6px;flex-wrap:wrap;cursor:pointer;transition:.1s}
+.cal-appt-row:hover{background:var(--bgh)}
+.cal-appt-main{flex:1;min-width:140px}
+.cal-appt-name{font-size:13px;font-weight:600;display:block}.cal-appt-phone{font-size:11px;color:var(--text2)}
+.cal-appt-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.cal-calls-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px}
+.cal-call-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-radius:6px;background:var(--bg3);font-size:12px}
 
 /* ═══════════════ TOASTS ═══════════════ */
 #toasts{position:fixed;bottom:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:6px}
@@ -427,7 +441,7 @@ tr:hover .ra3{opacity:1}
   <div class="tright">
     <span><span class="ldot"></span>Live</span>
     <span id="upd">Loading...</span>
-    <span style="font-size:9px;opacity:.5">v2.5</span>
+    <span style="font-size:9px;opacity:.5">v2.6</span>
     <button class="ibtn" id="darkBtn" title="Toggle theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <button class="ibtn" id="kbdBtn" title="Keyboard shortcuts (?)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M8 16h8"/></svg></button>
     <div class="ddwrap">
@@ -484,6 +498,7 @@ tr:hover .ra3{opacity:1}
   <div class="tab" id="tab-calendar">
     <div class="calh"><h2 id="calT"></h2><div class="calnav"><button onclick="calN(-1)">&larr;</button><button onclick="calN(0)">Today</button><button onclick="calN(1)">&rarr;</button></div></div>
     <div class="calgrid" id="calG"></div>
+    <div id="calDayDetail" style="display:none"></div>
   </div>
 
   <!-- APPOINTMENTS -->
@@ -873,18 +888,72 @@ async function loadAna(){try{const d=await apiAnalytics();const dk=document.docu
   S.anaLoaded=true}catch(e){console.error('Analytics:',e)}}
 
 /* ══════════════ CALENDAR ══════════════ */
+let calAppts=[],calSelDay=null;
+
+async function loadCalAppts(){
+  try{const r=await fetch('/api/appointments?view=all');if(!r.ok)return;const d=await r.json();calAppts=d.records||[];rCal()}
+  catch(e){console.error('Cal appts:',e)}}
+
 function rCal(){const y=S.calY,m=S.calM;const mn=['January','February','March','April','May','June','July','August','September','October','November','December'];
   $('#calT').textContent=mn[m]+' '+y;const f=new Date(y,m,1),sd=f.getDay(),dim=new Date(y,m+1,0).getDate(),td=new Date().toISOString().split('T')[0];
+  // Call events (by last call date)
   const evs={};for(const r of S.records){if(!r.lastCallDate)continue;const d=r.lastCallDate.split('T')[0];if(!evs[d])evs[d]=[];evs[d].push(r)}
+  // Appointment events (by appointment date)
+  const aevs={};for(const r of calAppts){if(!r.appointmentDate)continue;if(!aevs[r.appointmentDate])aevs[r.appointmentDate]=[];aevs[r.appointmentDate].push(r)}
   let h=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d=>`<div class="caldn">${d}</div>`).join('');
   const pd=new Date(y,m,0).getDate();for(let i=sd-1;i>=0;i--)h+=`<div class="cald om"><div class="caln">${pd-i}</div></div>`;
-  for(let d=1;d<=dim;d++){const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,it=ds===td,de=evs[ds]||[];
-    h+=`<div class="cald ${it?'today':''}"><div class="caln">${d}</div>`;
-    for(const ev of de.slice(0,3)){const c=ev.status==='Booked'?'eb':ev.status==='Callback Requested'?'ecb':'ec';h+=`<div class="calev ${c}">${esc(ev.firstName)} ${esc(ev.lastName)}</div>`}
-    if(de.length>3)h+=`<div style="font-size:9px;color:var(--text3)">+${de.length-3}</div>`;h+='</div>'}
+  for(let d=1;d<=dim;d++){
+    const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,it=ds===td,de=evs[ds]||[],ae=aevs[ds]||[];
+    const sel=ds===calSelDay;
+    h+=`<div class="cald ${it?'today':''} ${sel?'calsel':''}" onclick="showCalDay('${ds}')"><div class="caln">${d}</div>`;
+    // Appointments first (priority display)
+    for(const a of ae.slice(0,2)){
+      const nm=[a.firstName,a.lastName].filter(Boolean).join(' ')||'—';
+      const t=a.appointmentTime?(a.appointmentTime.replace(':00','').replace(' AM',' AM').replace(' PM',' PM').replace(/^0/,'')):'';
+      const cls=a.confirmationCallStatus==='Confirmed'?'eappt-conf':'eappt';
+      h+=`<div class="calev ${cls}">${t?t+' \xB7 ':''}${esc(nm)}</div>`}
+    // Calls (remaining slots)
+    const slots=Math.max(0,3-ae.slice(0,2).length);
+    for(const ev of de.slice(0,slots)){const c=ev.status==='Booked'?'eb':ev.status==='Callback Requested'?'ecb':'ec';h+=`<div class="calev ${c}">${esc(ev.firstName)} ${esc(ev.lastName)}</div>`}
+    const total=ae.length+de.length,shown=Math.min(ae.length,2)+Math.min(de.length,slots);
+    if(total>shown)h+=`<div style="font-size:9px;color:var(--text3)">+${total-shown}</div>`;
+    h+='</div>'}
   const tot=sd+dim,rem=(7-tot%7)%7;for(let i=1;i<=rem;i++)h+=`<div class="cald om"><div class="caln">${i}</div></div>`;
   $('#calG').innerHTML=h}
-function calN(d){if(d===0){S.calM=new Date().getMonth();S.calY=new Date().getFullYear()}else{S.calM+=d;if(S.calM>11){S.calM=0;S.calY++}if(S.calM<0){S.calM=11;S.calY--}}rCal()}
+
+function showCalDay(ds){
+  const panel=$('#calDayDetail');if(!panel)return;
+  if(calSelDay===ds){calSelDay=null;panel.style.display='none';rCal();return}
+  calSelDay=ds;rCal();
+  const dt=new Date(ds+'T12:00:00');
+  const dateLabel=dt.toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+  const dayAppts=calAppts.filter(r=>r.appointmentDate===ds);
+  const dayCalls=S.records.filter(r=>r.lastCallDate&&r.lastCallDate.startsWith(ds));
+  let h=`<div class="cal-detail"><div class="cal-detail-head"><span>${dateLabel}</span><button class="ibtn" onclick="calSelDay=null;$('#calDayDetail').style.display='none';rCal()">&times;</button></div>`;
+  if(dayAppts.length){
+    h+=`<div class="cal-detail-sec"><div class="cal-detail-stitle">&#128197; Appointments (${dayAppts.length})</div>`;
+    for(const a of dayAppts){
+      const nm=esc([a.firstName,a.lastName].filter(Boolean).join(' ')||'\u2014');
+      h+=`<div class="cal-appt-row" onclick="switchTab('appointments')">
+        <div class="cal-appt-main"><span class="cal-appt-name">${nm}</span><span class="cal-appt-phone">${esc(a.phone||'\u2014')}</span></div>
+        <div class="cal-appt-meta">
+          ${a.appointmentTime?`<span style="font-size:13px;font-weight:700">${esc(a.appointmentTime)}</span>`:''}
+          ${apptTypeBadge(a.appointmentType)}
+          ${confStatusBadge(a.confirmationCallStatus)}
+          ${a.electricBill?`<span style="font-size:11px;font-weight:700;color:var(--accent)">${esc(a.electricBill)}</span>`:''}
+          ${a.gateCode?`<span style="font-size:11px;font-weight:600;color:var(--y)">&#128274; ${esc(a.gateCode)}</span>`:''}
+        </div>
+      </div>`}
+    h+='</div>'}
+  if(dayCalls.length){
+    h+=`<div class="cal-detail-sec"><div class="cal-detail-stitle">&#128222; Calls (${dayCalls.length})</div><div class="cal-calls-grid">`;
+    for(const r of dayCalls.slice(0,12)){const nm=esc([r.firstName,r.lastName].filter(Boolean).join(' ')||'\u2014');h+=`<div class="cal-call-row"><span>${nm}</span>${fmtOC(r.callOutcome)}</div>`}
+    if(dayCalls.length>12)h+=`<div style="font-size:11px;color:var(--text3);padding:4px 0;grid-column:1/-1">+${dayCalls.length-12} more calls</div>`;
+    h+='</div></div>'}
+  if(!dayAppts.length&&!dayCalls.length)h+='<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px">No activity on this day</div>';
+  h+='</div>';panel.innerHTML=h;panel.style.display='block'}
+
+function calN(d){if(d===0){S.calM=new Date().getMonth();S.calY=new Date().getFullYear()}else{S.calM+=d;if(S.calM>11){S.calM=0;S.calY++}if(S.calM<0){S.calM=11;S.calY--}}calSelDay=null;if($('#calDayDetail'))$('#calDayDetail').style.display='none';rCal()}
 
 /* ══════════════ EVENTS ══════════════ */
 function onSort(k){if(S.sort===k)S.sortDir=S.sortDir==='desc'?'asc':'desc';else{S.sort=k;S.sortDir='desc'}S.page=1;load()}
@@ -924,7 +993,7 @@ function togTheme(){const c=document.documentElement.dataset.theme,n=c==='dark'?
 /* ══════════════ TABS ══════════════ */
 let liveInterval=null;
 function switchTab(t){S.tab=t;$$('.tab').forEach(e=>e.classList.toggle('on',e.id==='tab-'+t));$$('.tnav button').forEach(e=>e.classList.toggle('on',e.dataset.tab===t));
-  if(t==='analytics'&&!S.anaLoaded)loadAna();if(t==='calendar')rCal();if(t==='analysis')loadCA();
+  if(t==='analytics'&&!S.anaLoaded)loadAna();if(t==='calendar'){loadCalAppts();rCal()}if(t==='analysis')loadCA();
   if(t==='appointments')loadAppts();
   if(t==='live'){loadLive();if(!liveInterval)liveInterval=setInterval(()=>{if(S.tab==='live')loadLive(true)},10000)}
   else{if(liveInterval){clearInterval(liveInterval);liveInterval=null}}}
