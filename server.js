@@ -307,7 +307,7 @@ app.delete('/api/leads/:id/recording', async (req, res) => {
     const resp = await fetch(`${AIRTABLE_URL}/${req.params.id}`, {
       method: 'PATCH',
       headers: AIRTABLE_HEADERS,
-      body: JSON.stringify({ fields: { 'Recording URLs': '', 'Latest Recording': '' } })
+      body: JSON.stringify({ fields: { 'Recording URLs': '' } })
     });
     if (!resp.ok) {
       const errText = await resp.text();
