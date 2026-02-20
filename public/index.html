@@ -746,11 +746,13 @@ async function openM(id){
     <div class="msec notes-section"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Notes</div>
     <textarea id="mNt" class="notes-textarea" rows="4" placeholder="Add notes about this lead...">${esc(r.notes||'')}</textarea></div>`;
   if(r.recordingUrl){requestAnimationFrame(()=>{const mc=$('#m-wcanvas');if(mc){drawWF(mc,genWF(r.recordingUrl,70),(aId===r.id&&aAudio)?aAudio.currentTime/(aAudio.duration||1):0)}updPB(r.id)})}
-  $('#mfoot').innerHTML=`<button class="btn btn-d" onclick="qAct('${r.id}','DNC');closeM()">Mark DNC</button>
+  $('#mfoot').innerHTML=`<button class="m-del-btn" style="margin-right:auto" onclick="deleteLead('${r.id}','${esc([r.firstName,r.lastName].filter(Boolean).join(' ')||'this lead')}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg> Delete Lead</button>
+    <button class="btn btn-d" onclick="qAct('${r.id}','DNC');closeM()">Mark DNC</button>
     <button class="btn btn-s" onclick="closeM()">Cancel</button>
     <button class="btn btn-p" onclick="saveM('${r.id}')">Save</button>`}
   catch(e){$('#mbody').innerHTML='<div style="padding:30px;text-align:center;color:var(--r)">Failed to load</div>';$('#mfoot').innerHTML=`<button class="btn btn-s" onclick="closeM()">Close</button>`}}
 function closeM(){$('#mov').classList.remove('open');S.modal=null}
+async function deleteLead(id,name){if(!confirm('Permanently delete '+name+'? This cannot be undone.'))return;try{const r=await fetch('/api/leads/'+id,{method:'DELETE'});if(!r.ok)throw new Error('Server error');closeM();load();toast('Lead deleted','i')}catch(e){toast('Delete failed: '+e.message,'w')}}
 async function deleteRec(id){if(!confirm('Delete this recording? This cannot be undone.'))return;try{const r=await fetch('/api/leads/'+id+'/recording',{method:'DELETE'});if(!r.ok)throw new Error('Server error');toast('Recording deleted','i');if(aId===id){stopA(id)}openM(id);load()}catch(e){toast('Delete failed: '+e.message,'w')}}
 async function saveM(id){const st=$('#mSt')?.value,oc=$('#mOc')?.value,nt=$('#mNt')?.value;
   const f={};if(st)f.Status=st;if(oc)f['Call Outcome']=oc;if(nt!==undefined)f.Notes=nt;

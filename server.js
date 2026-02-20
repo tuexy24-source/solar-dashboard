@@ -301,6 +301,24 @@ app.patch('/api/leads/:id', async (req, res) => {
   }
 });
 
+// ── Delete Lead ───────────────────────────────────────────────────────────────
+app.delete('/api/leads/:id', async (req, res) => {
+  try {
+    const resp = await fetch(`${AIRTABLE_URL}/${req.params.id}`, {
+      method: 'DELETE',
+      headers: AIRTABLE_HEADERS
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(resp.status).json({ error: 'Airtable delete failed', details: errText });
+    }
+    cache.ts = 0;
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error', details: err.message });
+  }
+});
+
 // ── Delete Recording ─────────────────────────────────────────────────────────
 app.delete('/api/leads/:id/recording', async (req, res) => {
   try {
