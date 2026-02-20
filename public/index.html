@@ -403,7 +403,7 @@ tr:hover .ra3{opacity:1}
   <div class="tright">
     <span><span class="ldot"></span>Live</span>
     <span id="upd">Loading...</span>
-    <span style="font-size:9px;opacity:.5">v2.1</span>
+    <span style="font-size:9px;opacity:.5">v2.3</span>
     <button class="ibtn" id="darkBtn" title="Toggle theme"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <button class="ibtn" id="kbdBtn" title="Keyboard shortcuts (?)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M8 12h.01M12 12h.01M16 12h.01M8 16h8"/></svg></button>
     <div class="ddwrap">
@@ -513,6 +513,7 @@ function fmtSec(sec){if(!sec||isNaN(sec)||!isFinite(sec))return'0:00';const m=Ma
 function tpct(c,p){if(p===0&&c===0)return{t:'0%',c:'flat'};if(p===0)return{t:'+\u221E',c:'up'};const v=Math.round(((c-p)/p)*100);return v>0?{t:'+'+v+'%',c:'up'}:v<0?{t:v+'%',c:'dn'}:{t:'0%',c:'flat'}}
 function bcls(st){const s=(st||'').toLowerCase();if(s==='booked')return'b-booked';if(s==='callback requested')return'b-callback';if(s==='ready to call')return'b-ready';if(s==='dnc'||s==='do not call')return'b-dnc';if(s==='contacted')return'b-contacted';if(s==='currently calling')return'b-calling';if(s==='needs retry')return'b-retry';return'b-def'}
 function bicon(st){const s=(st||'').toLowerCase();if(s==='booked')return'\u2705';if(s==='callback requested')return'\uD83D\uDCDE';if(s==='needs retry')return'\uD83D\uDD04';if(s==='dnc')return'\u274C';if(s==='currently calling')return'<span class="calldot"></span>';if(s==='contacted')return'\uD83D\uDCE1';return''}
+function fmtOC(oc){if(!oc)return'\u2014';const m={BOOKED:{l:'Booked',c:'b-booked'},VIRTUAL_MEETING_REQUESTED:{l:'Virtual Mtg',c:'b-booked'},CALLBACK_REQUESTED:{l:'Callback',c:'b-callback'},RESCHEDULED:{l:'Rescheduled',c:'b-callback'},NOT_INTERESTED:{l:'Not Interested',c:'b-retry'},DNC_REQUESTED:{l:'DNC',c:'b-dnc'},CANCELLED:{l:'Cancelled',c:'b-dnc'},BAD_NUMBER:{l:'Bad #',c:'b-dnc'},HUNG_UP:{l:'Hung Up',c:'b-def'},NO_ANSWER:{l:'No Answer',c:'b-def'},VOICEMAIL:{l:'Voicemail',c:'b-def'},ALREADY_HAS_SOLAR:{l:'Has Solar',c:'b-retry'},RENTER:{l:'Renter',c:'b-retry'},LOW_BILL:{l:'Low Bill',c:'b-retry'}};const e=m[oc];return e?`<span class="badge ${e.c}">${e.l}</span>`:`<span class="badge b-def">${esc(oc)}</span>`;}
 function genWF(url,n=45){if(wfCache.has(url))return wfCache.get(url);let h=0;for(let i=0;i<url.length;i++)h=((h<<5)-h+url.charCodeAt(i))|0;const bars=[];for(let i=0;i<n;i++){h=(h*16807)&0x7fffffff;bars.push(.12+(h%1000)/1000*.88)}wfCache.set(url,bars);return bars}
 
 /* ══════════════ AUDIO ══════════════ */
@@ -615,31 +616,34 @@ function agentBadge(name){if(!name||name==='Unknown')return'\u2014';const pal=['
 function rTable(recs){
   if(!recs.length){$('#tw').innerHTML='<div style="text-align:center;padding:50px;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 12px;display:block;opacity:.4"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg><div style="font-size:14px;font-weight:600;margin-bottom:4px">No leads found</div><div style="font-size:12px">Try adjusting your search or filters</div></div>';$('#pg').innerHTML='';return}
   const cols=[{k:'chk',l:'<input type="checkbox" class="chk" onchange="togAll(this.checked)">',sk:null},
-    {k:'name',l:'Name',sk:'lastName'},{k:'phone',l:'Phone',sk:'phone'},{k:'status',l:'Status',sk:'status'},
+    {k:'name',l:'Name',sk:'lastName'},{k:'phone',l:'Phone',sk:'phone'},{k:'city',l:'City',sk:'city'},{k:'status',l:'Status',sk:'status'},
     {k:'outcome',l:'Outcome',sk:'callOutcome'},{k:'agent',l:'Agent',sk:null},{k:'dur',l:'Duration',sk:'callDuration'},
-    {k:'last',l:'Last Call',sk:'lastCallDate'},{k:'rec',l:'Recording',sk:null},{k:'tr',l:'',sk:null},{k:'act',l:'',sk:null}];
+    {k:'last',l:'Last Call',sk:'lastCallDate'},{k:'rec',l:'Recording',sk:null},{k:'act',l:'',sk:null}];
   let h='<table><thead><tr>';
   for(const c of cols){const so=S.sort===c.sk,ar=so?(S.sortDir==='asc'?'\u25B2':'\u25BC'):'\u25BC';
     h+=c.sk?`<th class="${so?'sorted':''}" onclick="onSort('${c.sk}')">${c.l} <span class="sa">${ar}</span></th>`:`<th>${c.l}</th>`}
   h+='</tr></thead><tbody>';
   for(const r of recs){const nm=esc([r.firstName,r.lastName].filter(Boolean).join(' ')||'\u2014');
     const chk=S.bulk.has(r.id)?'checked':'';
-    h+=`<tr data-id="${r.id}" onclick="openM('${r.id}')">
+    const booked=r.callOutcome==='BOOKED'||r.callOutcome==='VIRTUAL_MEETING_REQUESTED';
+    h+=`<tr data-id="${r.id}" onclick="openM('${r.id}')" ${booked?'style="background:rgba(74,222,128,.04)"':''}>
       <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${chk} onchange="togBulk('${r.id}',this.checked)"></td>
-      <td style="font-weight:500">${nm}</td>
+      <td style="font-weight:500">${nm}${r.notes?` <span class="note-indicator" title="${esc(r.notes)}">&#128221;</span>`:''}</td>
       <td style="font-variant-numeric:tabular-nums;font-size:12px">${esc(r.phone||'\u2014')}</td>
+      <td style="font-size:12px;color:var(--text2)">${esc(r.city||'\u2014')}</td>
       <td><span class="badge ${bcls(r.status)}">${bicon(r.status)} ${esc(r.status||'Unknown')}</span></td>
-      <td style="font-size:12px">${esc(r.callOutcome||'\u2014')}</td>
+      <td>${fmtOC(r.callOutcome)}</td>
       <td>${agentBadge(r.agentName)}</td>
-      <td style="font-size:12px;color:var(--text2)">${fmtDur(r.probedDuration||r.callDuration)}${r.probedDuration&&!r.callDuration?' <span title="Duration from recording" style="font-size:9px;color:var(--accent)">probed</span>':''}</td>
+      <td style="font-size:12px;color:var(--text2)">${fmtDur(r.probedDuration||r.callDuration)}</td>
       <td style="font-size:12px;color:var(--text2)">${fmt(r.lastCallDate)}</td>
       <td onclick="event.stopPropagation()">${mkPlayer(r.id,r.recordingUrl)}</td>
-      <td onclick="event.stopPropagation()" style="white-space:nowrap">${r.transcript?`<button class="tr-btn" onclick="showTr('${r.id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> View</button>`:'\u2014'}${r.notes?`<span class="note-indicator" title="${esc(r.notes)}">&#128221;</span>`:''}</td>
       <td onclick="event.stopPropagation()"><div class="ramenu"><button class="ra3" onclick="togRA(event,this)">&#8942;</button><div class="radd">
+        <button onclick="openM('${r.id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> View Details</button>
         <button onclick="copyPh('${esc(r.phone)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3.08 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg> Copy Phone</button>
         ${r.recordingUrl?`<button onclick="togA('${r.id}','${esc(r.recordingUrl)}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21"/></svg> Play Recording</button>`:''}
-        ${r.transcript?`<button onclick="showTr('${r.id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/></svg> View Transcript</button>`:''}
+        ${r.transcript?`<button onclick="showTr('${r.id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> View Transcript</button>`:''}
         <button class="danger" onclick="qAct('${r.id}','DNC')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Mark DNC</button>
+        <button class="danger" onclick="deleteLead('${r.id}','${nm}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L5 6"/></svg> Delete Lead</button>
       </div></div></td></tr>`}
   h+='</tbody></table>';$('#tw').innerHTML=h;
   requestAnimationFrame(()=>{for(const r of recs)if(r.recordingUrl){const p=(aId===r.id&&aAudio)?aAudio.currentTime/(aAudio.duration||1):0;drawPWF(r.id,p)}})}
@@ -725,22 +729,35 @@ async function openM(id){
     <div class="msec"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2A19.79 19.79 0 0 1 3.08 4.18 2 2 0 0 1 4.11 2h3"/></svg> Call Details</div>
     <div class="dgrid">
       <div class="ditem"><label>Duration</label><span>${fmtDur(r.probedDuration||r.callDuration)}${r.probedDuration&&!r.callDuration?' <span style="font-size:9px;color:var(--accent)">(from recording)</span>':''}</span></div>
+      <div class="ditem"><label>Last Call Status</label><span>${esc(r.lastCallStatus||'\u2014')}</span></div>
       <div class="ditem"><label>Attempts</label><span>${r.attemptCount||0}</span></div>
       <div class="ditem"><label>Last Call</label><span>${fmt(r.lastCallDate)}</span></div>
-      <div class="ditem"><label>Follow-up</label><span>${fmt(r.calculatedDate)}</span></div>
+      <div class="ditem"><label>Follow-up Date</label><span>${fmt(r.calculatedDate)}</span></div>
+      <div class="ditem"><label>Agent</label><span>${esc(r.agentName||'\u2014')}</span></div>
     </div></div>
+    ${(r.callbackDate||r.callbackReason)?`<div class="msec"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-18.84-18.84A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72"/><path d="M15 2v6"/><path d="M19 2v6"/><path d="M13 6h8"/></svg> Callback Info</div>
+    <div class="dgrid">
+      <div class="ditem"><label>Callback Date</label><span>${esc(r.callbackDate||'\u2014')}</span></div>
+      <div class="ditem"><label>Spouse Phone</label><span>${esc(r.spousePhone||'\u2014')}</span></div>
+      <div class="ditem full"><label>Callback Reason</label><span style="white-space:pre-wrap">${esc(r.callbackReason||'\u2014')}</span></div>
+    </div></div>`:''}
+
     <div class="msec"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> Contact</div>
     <div class="dgrid">
       <div class="ditem"><label>Phone</label><span>${esc(r.phone||'\u2014')}</span></div>
+      <div class="ditem"><label>Spouse Phone</label><span>${esc(r.spousePhone||'\u2014')}</span></div>
       <div class="ditem"><label>Email</label><span>${esc(r.email||'\u2014')}</span></div>
+      <div class="ditem"><label>Source</label><span>${esc(r.source||'\u2014')}</span></div>
       <div class="ditem full"><label>Address</label><span>${esc([r.address,r.city,r.state,r.zip].filter(Boolean).join(', ')||'\u2014')}</span></div>
     </div></div>
     <div class="msec"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Qualification</div>
     <div class="dgrid">
+      <div class="ditem"><label>Electric Bill</label><span style="font-weight:600;color:var(--accent)">${esc(r.electricBill||'\u2014')}</span></div>
       <div class="ditem"><label>Utility Company</label><span>${esc(r.utilityCompany||'\u2014')}</span></div>
-      <div class="ditem"><label>Electric Bill</label><span>${esc(r.electricBill||'\u2014')}</span></div>
-      <div class="ditem"><label>Roof Age</label><span>${r.roofAge!==''?r.roofAge+' years':'\u2014'}</span></div>
-      <div class="ditem"><label>Calendar Link</label><span>${r.calendarLink?`<a href="${esc(r.calendarLink)}" target="_blank" style="font-size:12px">Open Calendar</a>`:'\u2014'}</span></div>
+      <div class="ditem"><label>Roof Age</label><span>${r.roofAge!==''?r.roofAge+' yrs':'\u2014'}</span></div>
+      <div class="ditem"><label>Credit 650+</label><span>${r.credit650?'<span style="color:var(--g)">✓ Yes</span>':'<span style="color:var(--text3)">—</span>'}</span></div>
+      <div class="ditem"><label>Has Solar</label><span>${r.alreadyHasSolar?'<span style="color:var(--r)">Yes</span>':'No'}</span></div>
+      <div class="ditem"><label>Calendar Link</label><span>${r.calendarLink?`<a href="${esc(r.calendarLink)}" target="_blank" style="font-size:12px">Open</a>`:'\u2014'}</span></div>
     </div></div>
     ${transcript}
     <div class="msec notes-section"><div class="msec-t"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Notes</div>

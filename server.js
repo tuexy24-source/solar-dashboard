@@ -103,6 +103,13 @@ async function fetchAllRecords() {
       daysSinceContact: f['Days Since Contact'] ?? '',
       source: f['Source'] || '',
       rep: f['Rep'] || '',
+      callbackDate: f['Callback Date'] || '',
+      callbackReason: f['Callback Reason'] || '',
+      spousePhone: f['Spouse Phone'] || '',
+      credit650: f['Credit 650+'] || false,
+      alreadyHasSolar: f['Already Has Solar'] || false,
+      dncFlag: f['DNC Flag'] || false,
+      lastCallStatus: f['Last Call Status'] || '',
       fields: f
     };
   });
