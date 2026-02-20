@@ -110,6 +110,7 @@ async function fetchAllRecords() {
       alreadyHasSolar: f['Already Has Solar'] || false,
       dncFlag: f['DNC Flag'] || false,
       lastCallStatus: f['Last Call Status'] || '',
+      tags: Array.isArray(f['Tags']) ? f['Tags'] : [],
       fields: f
     };
   });
@@ -382,24 +383,36 @@ app.get('/api/analytics', async (req, res) => {
     const statusCounts = {};
     for (const r of all) { statusCounts[r.status || 'Unknown'] = (statusCounts[r.status || 'Unknown'] || 0) + 1; }
 
+    let spanishCount = 0, virtualCount = 0, inboundCount = 0, bookedCount = 0, dncCount = 0, callbackCount = 0;
+    for (const r of all) {
+      if (r.tags.includes('Spanish') || (r.callbackReason || '').toLowerCase().includes('spanish')) spanishCount++;
+      if (r.callOutcome === 'VIRTUAL_MEETING_REQUESTED') virtualCount++;
+      if (r.status === 'Inbound') inboundCount++;
+      if (r.callOutcome === 'BOOKED') bookedCount++;
+      if (r.callOutcome === 'DNC_REQUESTED') dncCount++;
+      if (r.callOutcome === 'CALLBACK_REQUESTED') callbackCount++;
+    }
+
     const agentBreakdown = {};
     for (const r of all) {
       const agent = r.agentName || 'Unknown';
-      if (!agentBreakdown[agent]) agentBreakdown[agent] = { calls: 0, booked: 0, notInterested: 0, hungUp: 0, voicemail: 0, callback: 0, noAnswer: 0, renter: 0, durations: [] };
+      if (!agentBreakdown[agent]) agentBreakdown[agent] = { calls: 0, booked: 0, virtual: 0, notInterested: 0, hungUp: 0, voicemail: 0, callback: 0, noAnswer: 0, renter: 0, spanish: 0, durations: [] };
       agentBreakdown[agent].calls++;
       if (r.callOutcome === 'BOOKED') agentBreakdown[agent].booked++;
+      if (r.callOutcome === 'VIRTUAL_MEETING_REQUESTED') agentBreakdown[agent].virtual++;
       if (r.callOutcome === 'NOT_INTERESTED') agentBreakdown[agent].notInterested++;
       if (r.callOutcome === 'HUNG_UP') agentBreakdown[agent].hungUp++;
       if (r.callOutcome === 'VOICEMAIL') agentBreakdown[agent].voicemail++;
       if (r.callOutcome === 'CALLBACK_REQUESTED') agentBreakdown[agent].callback++;
       if (r.callOutcome === 'NO_ANSWER') agentBreakdown[agent].noAnswer++;
       if (r.callOutcome === 'RENTER') agentBreakdown[agent].renter++;
+      if (r.tags.includes('Spanish') || (r.callbackReason || '').toLowerCase().includes('spanish')) agentBreakdown[agent].spanish++;
       if (r.probedDuration > 0) agentBreakdown[agent].durations.push(r.probedDuration);
     }
     for (const a of Object.values(agentBreakdown)) {
       const contacted = a.calls - a.voicemail - a.noAnswer;
       a.contactRate = a.calls > 0 ? ((contacted / a.calls) * 100).toFixed(1) : '0.0';
-      a.bookRate = contacted > 0 ? ((a.booked / contacted) * 100).toFixed(1) : '0.0';
+      a.bookRate = contacted > 0 ? (((a.booked + a.virtual) / contacted) * 100).toFixed(1) : '0.0';
       a.avgDuration = a.durations.length ? Math.round(a.durations.reduce((x, y) => x + y, 0) / a.durations.length) : 0;
       delete a.durations;
     }
@@ -410,7 +423,10 @@ app.get('/api/analytics', async (req, res) => {
     const durations = all.filter(r => r.probedDuration > 0).map(r => r.probedDuration);
     const avgDuration = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
 
-    res.json({ outcomeCounts, hourly, daily, statusCounts, durationBuckets, bestHour, totalRecords: all.length, avgDuration, agentBreakdown });
+    const contacted = all.filter(r => !['NO_ANSWER','VOICEMAIL'].includes(r.callOutcome)).length;
+    const globalBookRate = contacted > 0 ? (((bookedCount + virtualCount) / contacted) * 100).toFixed(1) : '0.0';
+
+    res.json({ outcomeCounts, hourly, daily, statusCounts, durationBuckets, bestHour, totalRecords: all.length, avgDuration, agentBreakdown, spanishCount, virtualCount, inboundCount, bookedCount, dncCount, callbackCount, contacted, globalBookRate });
   } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

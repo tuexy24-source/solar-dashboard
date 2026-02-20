@@ -244,7 +244,7 @@ tr:hover .ra3{opacity:1}
 .ccard{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:18px}
 .ccard h3{font-size:13px;font-weight:700;margin-bottom:14px}
 .ccard canvas{max-height:250px}
-.mcards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.mcards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px}
 .mcard{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
 .mcard .mv{font-size:26px;font-weight:800;color:var(--accent)}.mcard .ml{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
 
@@ -513,6 +513,7 @@ function fmtSec(sec){if(!sec||isNaN(sec)||!isFinite(sec))return'0:00';const m=Ma
 function tpct(c,p){if(p===0&&c===0)return{t:'0%',c:'flat'};if(p===0)return{t:'+\u221E',c:'up'};const v=Math.round(((c-p)/p)*100);return v>0?{t:'+'+v+'%',c:'up'}:v<0?{t:v+'%',c:'dn'}:{t:'0%',c:'flat'}}
 function bcls(st){const s=(st||'').toLowerCase();if(s==='booked')return'b-booked';if(s==='callback requested')return'b-callback';if(s==='ready to call')return'b-ready';if(s==='dnc'||s==='do not call')return'b-dnc';if(s==='contacted')return'b-contacted';if(s==='currently calling')return'b-calling';if(s==='needs retry')return'b-retry';return'b-def'}
 function bicon(st){const s=(st||'').toLowerCase();if(s==='booked')return'\u2705';if(s==='callback requested')return'\uD83D\uDCDE';if(s==='needs retry')return'\uD83D\uDD04';if(s==='dnc')return'\u274C';if(s==='currently calling')return'<span class="calldot"></span>';if(s==='contacted')return'\uD83D\uDCE1';return''}
+function fmtOCLabel(k){const m={BOOKED:'Booked',VIRTUAL_MEETING_REQUESTED:'Virtual Mtg',CALLBACK_REQUESTED:'Callback',NOT_INTERESTED:'Not Interested',DNC_REQUESTED:'DNC',HUNG_UP:'Hung Up',NO_ANSWER:'No Answer',VOICEMAIL:'Voicemail',ALREADY_HAS_SOLAR:'Has Solar',RENTER:'Renter',LOW_BILL:'Low Bill',BAD_NUMBER:'Bad #',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled'};return m[k]||k;}
 function fmtOC(oc){if(!oc)return'\u2014';const m={BOOKED:{l:'Booked',c:'b-booked'},VIRTUAL_MEETING_REQUESTED:{l:'Virtual Mtg',c:'b-booked'},CALLBACK_REQUESTED:{l:'Callback',c:'b-callback'},RESCHEDULED:{l:'Rescheduled',c:'b-callback'},NOT_INTERESTED:{l:'Not Interested',c:'b-retry'},DNC_REQUESTED:{l:'DNC',c:'b-dnc'},CANCELLED:{l:'Cancelled',c:'b-dnc'},BAD_NUMBER:{l:'Bad #',c:'b-dnc'},HUNG_UP:{l:'Hung Up',c:'b-def'},NO_ANSWER:{l:'No Answer',c:'b-def'},VOICEMAIL:{l:'Voicemail',c:'b-def'},ALREADY_HAS_SOLAR:{l:'Has Solar',c:'b-retry'},RENTER:{l:'Renter',c:'b-retry'},LOW_BILL:{l:'Low Bill',c:'b-retry'}};const e=m[oc];return e?`<span class="badge ${e.c}">${e.l}</span>`:`<span class="badge b-def">${esc(oc)}</span>`;}
 function genWF(url,n=45){if(wfCache.has(url))return wfCache.get(url);let h=0;for(let i=0;i<url.length;i++)h=((h<<5)-h+url.charCodeAt(i))|0;const bars=[];for(let i=0;i<n;i++){h=(h*16807)&0x7fffffff;bars.push(.12+(h%1000)/1000*.88)}wfCache.set(url,bars);return bars}
 
@@ -628,7 +629,7 @@ function rTable(recs){
     const booked=r.callOutcome==='BOOKED'||r.callOutcome==='VIRTUAL_MEETING_REQUESTED';
     h+=`<tr data-id="${r.id}" onclick="openM('${r.id}')" ${booked?'style="background:rgba(74,222,128,.04)"':''}>
       <td onclick="event.stopPropagation()"><input type="checkbox" class="chk" ${chk} onchange="togBulk('${r.id}',this.checked)"></td>
-      <td style="font-weight:500">${nm}${r.notes?` <span class="note-indicator" title="${esc(r.notes)}">&#128221;</span>`:''}</td>
+      <td style="font-weight:500">${nm}${r.notes?` <span class="note-indicator" title="${esc(r.notes)}">&#128221;</span>`:''}${r.tags&&r.tags.includes('Spanish')?' <span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:#0ea5e920;color:#38bdf8;border:1px solid #0ea5e940">ES</span>':''}${r.status==='Inbound'?' <span style="font-size:9px;font-weight:700;padding:1px 5px;border-radius:4px;background:var(--ybg);color:var(--yt)">IN</span>':''}</td>
       <td style="font-variant-numeric:tabular-nums;font-size:12px">${esc(r.phone||'\u2014')}</td>
       <td style="font-size:12px;color:var(--text2)">${esc(r.city||'\u2014')}</td>
       <td><span class="badge ${bcls(r.status)}">${bicon(r.status)} ${esc(r.status||'Unknown')}</span></td>
@@ -794,14 +795,19 @@ function closeAllRA(){$$('.radd').forEach(d=>d.classList.remove('open'))}
 let charts={};function killCharts(){Object.values(charts).forEach(c=>c.destroy());charts={}}
 async function loadAna(){try{const d=await apiAnalytics();const dk=document.documentElement.dataset.theme==='dark';
   const gc=dk?'#27272a':'#f0f0f0',tc=dk?'#a1a1aa':'#6b7280';
-  $('#amcards').innerHTML=`<div class="mcard"><div class="mv">${d.totalRecords}</div><div class="ml">Total Leads</div></div>
-    <div class="mcard"><div class="mv">${d.statusCounts['Booked']||0}</div><div class="ml">Booked</div></div>
-    <div class="mcard"><div class="mv">${fmtDur(d.avgDuration)}</div><div class="ml">Avg Duration</div></div>
-    <div class="mcard"><div class="mv">${d.bestHour>12?(d.bestHour-12)+'PM':d.bestHour+'AM'}</div><div class="ml">Best Hour</div></div>`;
+  const bh=d.bestHour;const bhLabel=(bh===0?'12':bh>12?bh-12:bh)+(bh>=12?'PM':'AM');
+  $('#amcards').innerHTML=`
+    <div class="mcard"><div class="mv" style="color:var(--g)">${d.bookedCount||0}</div><div class="ml">Booked</div></div>
+    <div class="mcard"><div class="mv" style="color:var(--b)">${d.virtualCount||0}</div><div class="ml">Virtual Meetings</div></div>
+    <div class="mcard"><div class="mv" style="color:var(--accent)">${d.globalBookRate||'0.0'}%</div><div class="ml">Book Rate (contacted)</div></div>
+    <div class="mcard"><div class="mv" style="color:var(--y)">${d.inboundCount||0}</div><div class="ml">Inbound Calls</div></div>
+    <div class="mcard"><div class="mv" style="color:#38bdf8">${d.spanishCount||0}</div><div class="ml">Spanish Speakers</div></div>
+    <div class="mcard"><div class="mv">${fmtDur(d.avgDuration)}</div><div class="ml">Avg Duration · Best ${bhLabel}</div></div>`;
   Chart.defaults.font.family="'Inter',sans-serif";Chart.defaults.color=tc;killCharts();
   const pal=['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#14b8a6','#f97316'];
-  const ol=Object.keys(d.outcomeCounts);
-  charts.c1=new Chart($('#ch1'),{type:'doughnut',data:{labels:ol,datasets:[{data:Object.values(d.outcomeCounts),backgroundColor:pal.slice(0,ol.length),borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{padding:14,usePointStyle:true,pointStyle:'circle'}}}}});
+  const ol=Object.keys(d.outcomeCounts).sort((a,b)=>d.outcomeCounts[b]-d.outcomeCounts[a]);
+  const ocColors={BOOKED:'#22c55e',VIRTUAL_MEETING_REQUESTED:'#06b6d4',CALLBACK_REQUESTED:'#f59e0b',NOT_INTERESTED:'#f97316',DNC_REQUESTED:'#ef4444',HUNG_UP:'#6b7280',NO_ANSWER:'#94a3b8',VOICEMAIL:'#a78bfa',ALREADY_HAS_SOLAR:'#84cc16',RENTER:'#14b8a6',LOW_BILL:'#fbbf24',BAD_NUMBER:'#f87171',RESCHEDULED:'#60a5fa',CANCELLED:'#fb923c'};
+  charts.c1=new Chart($('#ch1'),{type:'doughnut',data:{labels:ol.map(fmtOCLabel),datasets:[{data:ol.map(k=>d.outcomeCounts[k]),backgroundColor:ol.map(k=>ocColors[k]||'#6366f1'),borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{padding:14,usePointStyle:true,pointStyle:'circle'}}}}});
   charts.c2=new Chart($('#ch2'),{type:'bar',data:{labels:d.hourly.map((_,i)=>i<12?(i||12)+'a':((i-12)||12)+'p'),datasets:[{label:'Calls',data:d.hourly,backgroundColor:'#6366f1',borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:gc}},x:{grid:{display:false}}}}});
   const dl=Object.keys(d.daily).sort();
   charts.c3=new Chart($('#ch3'),{type:'line',data:{labels:dl.map(x=>{const dt=new Date(x+'T12:00:00');return dt.toLocaleDateString('en-US',{month:'short',day:'numeric'})}),datasets:[{label:'Calls',data:dl.map(x=>d.daily[x].calls),borderColor:'#6366f1',backgroundColor:'#6366f120',fill:true,tension:.3},{label:'Booked',data:dl.map(x=>d.daily[x].booked),borderColor:'#22c55e',backgroundColor:'#22c55e20',fill:true,tension:.3}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{usePointStyle:true,pointStyle:'circle'}}},scales:{y:{beginAtZero:true,grid:{color:gc}},x:{grid:{display:false}}}}});
@@ -811,13 +817,13 @@ async function loadAna(){try{const d=await apiAnalytics();const dk=document.docu
   const ab=d.agentBreakdown||{};const agEntries=Object.entries(ab);
   const agColors=['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6'];
   let ap='';if(agEntries.length){
-    ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><table class="ap-table"><thead><tr><th>Agent</th><th>Calls</th><th>Contacted</th><th>Contact Rate</th><th>Book Rate</th><th>Booked</th><th>Voicemail</th><th>No Answer</th><th>Callbacks</th><th>Avg Duration</th></tr></thead><tbody>';
+    ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><table class="ap-table"><thead><tr><th>Agent</th><th>Calls</th><th>Contacted</th><th>Contact%</th><th>Book%</th><th>Booked</th><th>Virtual</th><th>Voicemail</th><th>No Answer</th><th>Callbacks</th><th>Spanish</th><th>Avg Dur</th></tr></thead><tbody>';
     agEntries.forEach(([name,a],i)=>{
       const cr=parseFloat(a.contactRate),br=parseFloat(a.bookRate);
       const crCls=cr>=50?'rate-g':cr>=30?'rate-y':'rate-r';
       const brCls=br>=10?'rate-g':br>=5?'rate-y':'rate-r';
       const contacted=a.calls-a.voicemail-a.noAnswer;
-      ap+=`<tr><td><span class="agent-badge"><span class="ap-badge-dot" style="background:${agColors[i%agColors.length]}"></span>${esc(name)}</span></td><td><strong>${a.calls}</strong></td><td>${contacted}</td><td><span class="rate-pill ${crCls}">${a.contactRate}%</span></td><td><span class="rate-pill ${brCls}">${a.bookRate}%</span></td><td style="color:var(--g);font-weight:700">${a.booked}</td><td>${a.voicemail}</td><td>${a.noAnswer}</td><td>${a.callback}</td><td>${fmtDur(a.avgDuration)}</td></tr>`;
+      ap+=`<tr><td><span class="agent-badge"><span class="ap-badge-dot" style="background:${agColors[i%agColors.length]}"></span>${esc(name)}</span></td><td><strong>${a.calls}</strong></td><td>${contacted}</td><td><span class="rate-pill ${crCls}">${a.contactRate}%</span></td><td><span class="rate-pill ${brCls}">${a.bookRate}%</span></td><td style="color:var(--g);font-weight:700">${a.booked}</td><td style="color:var(--b);font-weight:600">${a.virtual||0}</td><td>${a.voicemail}</td><td>${a.noAnswer}</td><td>${a.callback}</td><td style="color:#38bdf8">${a.spanish||0}</td><td>${fmtDur(a.avgDuration)}</td></tr>`;
     });
     ap+='</tbody></table></div>';
   }else{ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">No agent data found — ensure Agent ID is mapped in Airtable</div></div>'}
