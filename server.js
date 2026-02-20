@@ -9,6 +9,7 @@ const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || 'appKbfE8na15iM6EZ';
 const AIRTABLE_TABLE_NAME = 'Outbound Leads';
 const AIRTABLE_TOKEN = process.env.AIRTABLE_TOKEN;
 const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE_NAME)}`;
+const APPTS_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent('Appointments')}`;
 const AIRTABLE_HEADERS = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' };
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
@@ -45,6 +46,7 @@ async function probeAllDurations(records) {
 
 // ── Cache ───────────────────────────────────────────────────────────────────
 let cache = { records: null, raw: null, ts: 0 };
+let apptCache = { records: null, ts: 0 };
 const CACHE_TTL = 20_000;
 
 async function fetchAllRecords() {
@@ -127,6 +129,62 @@ async function fetchAllRecords() {
   console.log(`[${new Date().toISOString()}] Cached ${mapped.length} records`);
 
   if (prev) detectChanges(prev, mapped);
+  return mapped;
+}
+
+// ── Appointments fetch ───────────────────────────────────────────────────────
+async function fetchAllAppts() {
+  const now = Date.now();
+  if (apptCache.records && now - apptCache.ts < CACHE_TTL) return apptCache.records;
+  let all = [], offset = null;
+  do {
+    const params = new URLSearchParams({ pageSize: '100', 'sort[0][field]': 'Appointment Date', 'sort[0][direction]': 'asc' });
+    if (offset) params.set('offset', offset);
+    const res = await fetch(`${APPTS_URL}?${params}`, { headers: AIRTABLE_HEADERS });
+    if (!res.ok) throw new Error(`Airtable ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    all = all.concat(data.records);
+    offset = data.offset || null;
+  } while (offset);
+
+  const mapped = all.map(r => {
+    const f = r.fields;
+    return {
+      id: r.id,
+      appointmentId: f['Appointment ID'] || '',
+      firstName: f['First Name'] || '',
+      lastName: f['Last Name'] || '',
+      phone: f['Phone'] || (Array.isArray(f['Phone (Lookup)']) ? f['Phone (Lookup)'][0] : ''),
+      email: f['Email'] || '',
+      address: Array.isArray(f['Address (Lookup)']) ? f['Address (Lookup)'][0] : '',
+      zip: Array.isArray(f['Zip (Lookup)']) ? f['Zip (Lookup)'][0] : '',
+      appointmentDate: f['Appointment Date'] || '',
+      appointmentTime: f['Appointment Time'] || '',
+      appointmentType: f['Appointment Type'] || '',
+      status: f['Status'] || '',
+      calendarLink: f['Calendar Event Link'] || '',
+      electricBill: f['Electric Bill'] || '',
+      daysUntil: f['Days Until Appointment'] ?? null,
+      credit650: f['Credit 650+'] || false,
+      showed: f['Showed'] || false,
+      bookedBy: f['Booked By'] || '',
+      notes: f['Notes'] || '',
+      createdDate: f['Created Date'] || '',
+      gateCode: f['Gate Code'] || '',
+      roofAge: f['Roof Age (Years)'] ?? '',
+      alreadyHasSolar: f['Already Has Solar'] || false,
+      utilityCompany: Array.isArray(f['Utility Company (Lookup)']) ? f['Utility Company (Lookup)'][0] : '',
+      callOutcome: f['Call Outcome'] || '',
+      confirmationCalled: f['Confirmation Called'] || false,
+      confirmationCallDate: f['Confirmation Call Date'] || '',
+      confirmationCallStatus: f['Confirmation Call Status'] || '',
+      confirmationAttempts: f['Confirmation Attempts'] || 0,
+      confirmationNotes: f['Confirmation Notes'] || '',
+      outboundLeadId: Array.isArray(f['Outbound Lead']) ? f['Outbound Lead'][0] : '',
+    };
+  });
+  apptCache = { records: mapped, ts: now };
+  console.log(`[${new Date().toISOString()}] Cached ${mapped.length} appointments`);
   return mapped;
 }
 
@@ -616,6 +674,62 @@ Be direct and specific. No generic advice.`;
     console.log(`[AI] Done for ${targetDate}`);
     res.json({ analysis, cached: false, sampledCalls: finalSample.length, totalWithTranscripts: dayRecords.length });
   } catch (err) { console.error('AI error:', err); res.status(500).json({ error: err.message }); }
+});
+
+// ── Appointments list ────────────────────────────────────────────────────────
+app.get('/api/appointments', async (req, res) => {
+  try {
+    const all = await fetchAllAppts();
+    const today = new Date().toISOString().split('T')[0];
+    const in7days = new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0];
+    const upcoming = all.filter(r => r.appointmentDate >= today);
+    const stats = {
+      todayCount: all.filter(r => r.appointmentDate === today).length,
+      thisWeekCount: all.filter(r => r.appointmentDate >= today && r.appointmentDate <= in7days).length,
+      needConfirmCount: upcoming.filter(r => !r.confirmationCalled).length,
+      confirmedCount: all.filter(r => r.confirmationCallStatus === 'Confirmed').length,
+      noShowCount: all.filter(r => r.appointmentDate < today && r.showed === false && r.appointmentDate).length,
+      totalUpcoming: upcoming.length
+    };
+    let filtered = [...all];
+    const { view = 'upcoming', search } = req.query;
+    if (view === 'upcoming') filtered = filtered.filter(r => r.appointmentDate >= today);
+    else if (view === 'past') filtered = filtered.filter(r => r.appointmentDate < today && r.appointmentDate);
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(r =>
+        `${r.firstName} ${r.lastName}`.toLowerCase().includes(q) || r.phone.includes(q)
+      );
+    }
+    filtered.sort((a, b) => {
+      if (!a.appointmentDate) return 1;
+      if (!b.appointmentDate) return -1;
+      return a.appointmentDate.localeCompare(b.appointmentDate);
+    });
+    res.json({ records: filtered, stats });
+  } catch (err) {
+    console.error('Appointments error:', err);
+    res.status(500).json({ error: 'Internal server error', details: err.message });
+  }
+});
+
+// ── Update appointment ───────────────────────────────────────────────────────
+app.patch('/api/appointments/:id', async (req, res) => {
+  try {
+    const { fields } = req.body;
+    if (!fields) return res.status(400).json({ error: 'Missing fields' });
+    const resp = await fetch(`${APPTS_URL}/${req.params.id}`, {
+      method: 'PATCH', headers: AIRTABLE_HEADERS, body: JSON.stringify({ fields })
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return res.status(resp.status).json({ error: 'Airtable update failed', details: errText });
+    }
+    apptCache.ts = 0;
+    res.json({ success: true, record: await resp.json() });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error', details: err.message });
+  }
 });
 
 app.get('/', (req, res) => {
