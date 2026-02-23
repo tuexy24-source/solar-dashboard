@@ -299,7 +299,7 @@ function extractVapiToolCall(messages) {
   if (!Array.isArray(messages)) return null;
   for (const msg of messages) {
     if (msg.role === 'assistant' && Array.isArray(msg.toolCalls)) {
-      const tc = msg.toolCalls.find(t => t.function?.name === 'submit_call_data');
+      const tc = msg.toolCalls.find(t => t.function?.name === 'call_make' || t.function?.name === 'submit_call_data');
       if (tc) {
         try {
           return typeof tc.function.arguments === 'string'
