@@ -231,6 +231,158 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+// ── Retell Webhook ───────────────────────────────────────────────────────────
+
+// Maps Retell disconnection_reason → call outcome for calls that never connected
+// (AI agent never ran, so submit_call_data() was never called)
+const DISCONNECTION_OUTCOME_MAP = {
+  'user_declined':             'NO_ANSWER',
+  'dial_no_answer':            'NO_ANSWER',
+  'voicemail_reached':         'VOICEMAIL',
+  'machine_detected':          'VOICEMAIL',
+  'error_llm_websocket':       'NO_ANSWER',
+  'error_inbound_webhook':     'NO_ANSWER',
+  'concurrency_limit_reached': 'NO_ANSWER',
+  'user_hangup':               'HUNG_UP',
+  'inactivity':                'HUNG_UP',
+  'agent_hangup':              'HUNG_UP',
+};
+
+// Maps call outcome → Airtable Status value
+const OUTCOME_STATUS_MAP = {
+  'BOOKED':                    'Booked',
+  'VIRTUAL_MEETING_REQUESTED': 'Booked',
+  'DNC_REQUESTED':             'DNC',
+  'CALLBACK_REQUESTED':        'Callback Requested',
+  'NOT_INTERESTED':            'DNQ',
+  'RENTER':                    'DNQ',
+  'LOW_BILL':                  'DNQ',
+  'ALREADY_HAS_SOLAR':         'DNQ',
+  'BAD_NUMBER':                'DNQ',
+  'NO_ANSWER':                 'Needs Retry',
+  'VOICEMAIL':                 'Needs Retry',
+  'HUNG_UP':                   'Needs Retry',
+};
+
+function normalizePhone(p) {
+  // Strip all non-digits, keep last 10 digits so +1 prefix / formatting differences don't matter
+  return (p || '').replace(/\D/g, '').slice(-10);
+}
+
+app.post('/retell-webhook', async (req, res) => {
+  // Respond 200 immediately — Retell will retry if it doesn't get a fast response
+  res.json({ received: true });
+
+  try {
+    const { event, call } = req.body || {};
+
+    if ((event !== 'call_ended' && event !== 'call_analyzed') || !call) {
+      console.log(`[Webhook] Ignored event: ${event}`);
+      return;
+    }
+
+    const {
+      call_id,
+      agent_id,
+      disconnection_reason,
+      to_number,
+      start_timestamp,
+      duration_ms,
+      recording_url,
+      transcript,
+      call_analysis
+    } = call;
+
+    const customData = call_analysis?.custom_analysis_data || {};
+
+    // Priority: use what the agent submitted via submit_call_data() first,
+    // then fall back to what Retell tells us about why the call ended
+    const agentOutcome  = customData.call_outcome || null;
+    const fallback      = DISCONNECTION_OUTCOME_MAP[disconnection_reason] || null;
+    const callOutcome   = agentOutcome || fallback;
+
+    if (!callOutcome) {
+      console.log(`[Webhook] call_id=${call_id} — unrecognized disconnection_reason="${disconnection_reason}", skipping`);
+      return;
+    }
+
+    // Find the lead by the phone number Retell dialed
+    const calledDigits = normalizePhone(to_number);
+    if (!calledDigits) {
+      console.log(`[Webhook] call_id=${call_id} — no to_number in payload, skipping`);
+      return;
+    }
+
+    const allRecords = await fetchAllRecords();
+    const lead = allRecords.find(r => normalizePhone(r.phone) === calledDigits);
+
+    if (!lead) {
+      console.log(`[Webhook] call_id=${call_id} — no lead found for ${to_number}, skipping`);
+      return;
+    }
+
+    const newStatus    = OUTCOME_STATUS_MAP[callOutcome] || 'Needs Retry';
+    const lastCallDate = start_timestamp ? new Date(start_timestamp).toISOString() : new Date().toISOString();
+    const durationSec  = duration_ms ? Math.round(duration_ms / 1000) : 0;
+
+    // Core fields — always written regardless of whether the call connected
+    const updateFields = {
+      'Call Outcome':    callOutcome,
+      'Status':          newStatus,
+      'Last Call Date':  lastCallDate,
+      'Last Call Status': disconnection_reason || '',
+      'Agent ID':        agent_id || '',
+      'Retell Call ID':  call_id  || '',
+      'Attempt Count':   (lead.attemptCount || 0) + 1,
+    };
+
+    // Only write these if the call actually produced data (connected calls)
+    if (durationSec  > 0)  updateFields['Call Duration']    = durationSec;
+    if (recording_url)     updateFields['Latest Recording'] = recording_url;
+    if (transcript)        updateFields['Transcript']       = transcript;
+
+    // Extra fields from submit_call_data() — only set when present
+    if (customData.electric_bill_range)   updateFields['Electric Bill']    = customData.electric_bill_range;
+    if (customData.home_age_year)         updateFields['Year Built']       = String(customData.home_age_year);
+    if (customData.roof_age_years != null) updateFields['Roof Age (Years)'] = Number(customData.roof_age_years);
+    if (customData.has_solar != null)     updateFields['Already Has Solar']= !!customData.has_solar;
+    if (customData.gate_code)             updateFields['Gate Code']        = customData.gate_code;
+    if (customData.email)                 updateFields['Email']            = customData.email;
+    if (customData.spouse_phone)          updateFields['Spouse Phone']     = customData.spouse_phone;
+    if (customData.callback_date)         updateFields['Callback Date']    = customData.callback_date;
+    if (customData.callback_reason)       updateFields['Callback Reason']  = customData.callback_reason;
+    if (customData.credit_above_650 != null) {
+      updateFields['Credit 650+'] = customData.credit_above_650 === true || customData.credit_above_650 === 'true';
+    }
+
+    // DNC — set the flag and date so suppression view catches it immediately
+    if (callOutcome === 'DNC_REQUESTED') {
+      updateFields['DNC Flag'] = true;
+      updateFields['DNC Date'] = lastCallDate.split('T')[0];
+    }
+
+    const resp = await fetch(`${AIRTABLE_URL}/${lead.id}`, {
+      method: 'PATCH',
+      headers: AIRTABLE_HEADERS,
+      body: JSON.stringify({ fields: updateFields })
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error(`[Webhook] Airtable PATCH failed for lead ${lead.id}:`, errText);
+      return;
+    }
+
+    // Bust the cache so the dashboard reflects the change on next poll
+    cache.ts = 0;
+
+    console.log(`[Webhook] ✓ ${lead.firstName} ${lead.lastName} | ${to_number} | outcome=${callOutcome} | status=${newStatus} | reason=${disconnection_reason}${agentOutcome ? '' : ' (fallback)'}`);
+
+  } catch (err) {
+    console.error('[Webhook] Unhandled error:', err.message);
+  }
+});
+
 // ── SSE endpoint ────────────────────────────────────────────────────────────
 app.get('/api/events', (req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
