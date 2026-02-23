@@ -477,6 +477,14 @@ tr:hover .ra3{opacity:1}
 
   <!-- ANALYTICS -->
   <div class="tab" id="tab-analytics">
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap">
+      <button class="fbtn active" id="anaBtnToday" onclick="setAnaDate('today')">Today</button>
+      <button class="fbtn" id="anaBtnYest" onclick="setAnaDate('yesterday')">Yesterday</button>
+      <button class="fbtn" id="anaBtnAll" onclick="setAnaDate('all')">All Time</button>
+      <input type="date" id="anaDatePicker" onchange="setAnaDate('custom')" style="padding:5px 10px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text1);font-size:13px">
+      <span id="anaDateLabel" style="font-size:12px;color:var(--text3)"></span>
+    </div>
+    <div id="anaOutcomePills" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
     <div class="mcards" id="amcards"></div>
     <div class="cgrid">
       <div class="ccard"><h3>Call Outcomes</h3><canvas id="ch1"></canvas></div>
@@ -637,7 +645,21 @@ async function apiLeads(){
 async function apiLead(id){const r=await fetch('/api/leads/'+id);if(!r.ok)throw new Error(r.status);return r.json()}
 async function apiUpdate(id,f){const r=await fetch('/api/leads/'+id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:f})});
   if(!r.ok){const err=await r.json().catch(()=>({}));const msg=err.details||err.error||'Status '+r.status;console.error('Update error:',msg);throw new Error(msg)}return r.json()}
-async function apiAnalytics(){const r=await fetch('/api/analytics');if(!r.ok)throw new Error(r.status);return r.json()}
+async function apiAnalytics(date){const url=date?'/api/analytics?date='+date:'/api/analytics';const r=await fetch(url);if(!r.ok)throw new Error(r.status);return r.json()}
+function setAnaDate(mode){
+  const picker=$('#anaDatePicker');
+  const today=new Date().toISOString().split('T')[0];
+  const yest=new Date(Date.now()-86400000).toISOString().split('T')[0];
+  let date=null;
+  if(mode==='today'){date=today;if(picker)picker.value=today}
+  else if(mode==='yesterday'){date=yest;if(picker)picker.value=yest}
+  else if(mode==='all'){date=null;if(picker)picker.value=''}
+  else if(mode==='custom'){date=picker?picker.value:null}
+  $$('#tab-analytics .fbtn').forEach(b=>b.classList.remove('active'));
+  if(mode==='today')$('#anaBtnToday')&&$('#anaBtnToday').classList.add('active');
+  else if(mode==='yesterday')$('#anaBtnYest')&&$('#anaBtnYest').classList.add('active');
+  else if(mode==='all')$('#anaBtnAll')&&$('#anaBtnAll').classList.add('active');
+  S.anaDate=date||null;S.anaLoaded=false;loadAna()}
 
 /* ══════════════ RENDER STATS ══════════════ */
 function rStats(s){
@@ -850,7 +872,7 @@ function closeAllRA(){$$('.radd').forEach(d=>d.classList.remove('open'))}
 
 /* ══════════════ ANALYTICS ══════════════ */
 let charts={};function killCharts(){Object.values(charts).forEach(c=>c.destroy());charts={}}
-async function loadAna(){try{const d=await apiAnalytics();const dk=document.documentElement.dataset.theme==='dark';
+async function loadAna(){try{const d=await apiAnalytics(S.anaDate||null);const dk=document.documentElement.dataset.theme==='dark';
   const gc=dk?'#27272a':'#f0f0f0',tc=dk?'#a1a1aa':'#6b7280';
   const bh=d.bestHour;const bhLabel=(bh===0?'12':bh>12?bh-12:bh)+(bh>=12?'PM':'AM');
   $('#amcards').innerHTML=`
@@ -860,6 +882,13 @@ async function loadAna(){try{const d=await apiAnalytics();const dk=document.docu
     <div class="mcard"><div class="mv" style="color:var(--y)">${d.inboundCount||0}</div><div class="ml">Inbound Calls</div></div>
     <div class="mcard"><div class="mv" style="color:#38bdf8">${d.spanishCount||0}</div><div class="ml">Spanish Speakers</div></div>
     <div class="mcard"><div class="mv">${fmtDur(d.avgDuration)}</div><div class="ml">Avg Duration · Best ${bhLabel}</div></div>`;
+  const pillsEl=$('#anaOutcomePills');if(pillsEl){
+    const pillCfg=[['NO_ANSWER','#94a3b8','No Answer'],['VOICEMAIL','#a78bfa','Voicemail'],['HUNG_UP_USER','#6b7280','HU User'],['HUNG_UP_BOT','#f97316','HU Bot'],['HUNG_UP','#6b7280','Hung Up'],['CALLBACK_REQUESTED','#f59e0b','Callback'],['NOT_INTERESTED','#f97316','Not Int.'],['DNC_REQUESTED','#ef4444','DNC'],['BOOKED','#22c55e','Booked'],['VIRTUAL_MEETING_REQUESTED','#06b6d4','Virtual'],['RENTER','#14b8a6','Renter'],['LOW_BILL','#fbbf24','Low Bill'],['BAD_NUMBER','#f87171','Bad #'],['ALREADY_HAS_SOLAR','#84cc16','Has Solar']];
+    const totalDials=Object.values(d.outcomeCounts||{}).reduce((a,b)=>a+b,0);
+    let ph=totalDials?`<span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;background:var(--card);border:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text1)">&#128222; ${totalDials} Dials</span>`:'';
+    pillCfg.forEach(([k,c,l])=>{const n=d.outcomeCounts[k]||0;if(n>0)ph+=`<span style="display:inline-flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;background:${c}22;border:1px solid ${c}55;font-size:12px;font-weight:600;color:${c}"><span style="width:7px;height:7px;border-radius:50%;background:${c};flex-shrink:0"></span>${l} ${n}</span>`});
+    pillsEl.innerHTML=ph}
+  const lbl=$('#anaDateLabel');if(lbl)lbl.textContent=S.anaDate?'— '+new Date(S.anaDate+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}):'— All Time';
   Chart.defaults.font.family="'Inter',sans-serif";Chart.defaults.color=tc;killCharts();
   const pal=['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#14b8a6','#f97316'];
   const ol=Object.keys(d.outcomeCounts).sort((a,b)=>d.outcomeCounts[b]-d.outcomeCounts[a]);
@@ -874,13 +903,13 @@ async function loadAna(){try{const d=await apiAnalytics();const dk=document.docu
   const ab=d.agentBreakdown||{};const agEntries=Object.entries(ab);
   const agColors=['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6'];
   let ap='';if(agEntries.length){
-    ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><table class="ap-table"><thead><tr><th>Agent</th><th>Calls</th><th>Contacted</th><th>Contact%</th><th>Book%</th><th>Booked</th><th>Virtual</th><th>Voicemail</th><th>No Answer</th><th>Callbacks</th><th>Spanish</th><th>Avg Dur</th></tr></thead><tbody>';
+    ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><table class="ap-table"><thead><tr><th>Agent</th><th>Dials</th><th>Contacted</th><th>Contact%</th><th>Book%</th><th>Booked</th><th>Virtual</th><th>No Answer</th><th>Voicemail</th><th>HU User</th><th>HU Bot</th><th>Callback</th><th>Not Int.</th><th>Spanish</th><th>Avg Dur</th></tr></thead><tbody>';
     agEntries.forEach(([name,a],i)=>{
       const cr=parseFloat(a.contactRate),br=parseFloat(a.bookRate);
       const crCls=cr>=50?'rate-g':cr>=30?'rate-y':'rate-r';
       const brCls=br>=10?'rate-g':br>=5?'rate-y':'rate-r';
       const contacted=a.calls-a.voicemail-a.noAnswer;
-      ap+=`<tr><td><span class="agent-badge"><span class="ap-badge-dot" style="background:${agColors[i%agColors.length]}"></span>${esc(name)}</span></td><td><strong>${a.calls}</strong></td><td>${contacted}</td><td><span class="rate-pill ${crCls}">${a.contactRate}%</span></td><td><span class="rate-pill ${brCls}">${a.bookRate}%</span></td><td style="color:var(--g);font-weight:700">${a.booked}</td><td style="color:var(--b);font-weight:600">${a.virtual||0}</td><td>${a.voicemail}</td><td>${a.noAnswer}</td><td>${a.callback}</td><td style="color:#38bdf8">${a.spanish||0}</td><td>${fmtDur(a.avgDuration)}</td></tr>`;
+      ap+=`<tr><td><span class="agent-badge"><span class="ap-badge-dot" style="background:${agColors[i%agColors.length]}"></span>${esc(name)}</span></td><td><strong>${a.calls}</strong></td><td>${contacted}</td><td><span class="rate-pill ${crCls}">${a.contactRate}%</span></td><td><span class="rate-pill ${brCls}">${a.bookRate}%</span></td><td style="color:var(--g);font-weight:700">${a.booked}</td><td style="color:var(--b);font-weight:600">${a.virtual||0}</td><td>${a.noAnswer}</td><td>${a.voicemail}</td><td style="color:#6b7280">${a.hungUpUser||0}</td><td style="color:#f97316">${a.hungUpBot||0}</td><td>${a.callback}</td><td>${a.notInterested||0}</td><td style="color:#38bdf8">${a.spanish||0}</td><td>${fmtDur(a.avgDuration)}</td></tr>`;
     });
     ap+='</tbody></table></div>';
   }else{ap='<div class="ap-table-wrap"><h3>&#127775; Agent Performance</h3><div style="padding:30px;text-align:center;color:var(--text3);font-size:13px">No agent data found — ensure Agent ID is mapped in Airtable</div></div>'}
@@ -993,7 +1022,7 @@ function togTheme(){const c=document.documentElement.dataset.theme,n=c==='dark'?
 /* ══════════════ TABS ══════════════ */
 let liveInterval=null;
 function switchTab(t){S.tab=t;$$('.tab').forEach(e=>e.classList.toggle('on',e.id==='tab-'+t));$$('.tnav button').forEach(e=>e.classList.toggle('on',e.dataset.tab===t));
-  if(t==='analytics'&&!S.anaLoaded)loadAna();if(t==='calendar'){loadCalAppts();rCal()}if(t==='analysis')loadCA();
+  if(t==='analytics'){if(S.anaDate===undefined){S.anaDate=new Date().toISOString().split('T')[0];setTimeout(()=>{const p=$('#anaDatePicker');if(p)p.value=S.anaDate},50)}if(!S.anaLoaded)loadAna()}if(t==='calendar'){loadCalAppts();rCal()}if(t==='analysis')loadCA();
   if(t==='appointments')loadAppts();
   if(t==='live'){loadLive();if(!liveInterval)liveInterval=setInterval(()=>{if(S.tab==='live')loadLive(true)},10000)}
   else{if(liveInterval){clearInterval(liveInterval);liveInterval=null}}}

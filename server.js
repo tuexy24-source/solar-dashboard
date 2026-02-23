@@ -798,7 +798,11 @@ app.delete('/api/leads/:id/recording', async (req, res) => {
 // ── Analytics ───────────────────────────────────────────────────────────────
 app.get('/api/analytics', async (req, res) => {
   try {
-    const all = await fetchAllRecords();
+    const all_base = await fetchAllRecords();
+    const dateFilter = req.query.date || null; // YYYY-MM-DD, filters by lastCallDate
+    const all = dateFilter
+      ? all_base.filter(r => r.lastCallDate && r.lastCallDate.startsWith(dateFilter))
+      : all_base;
 
     const outcomeCounts = {};
     const hourly = new Array(24).fill(0);
@@ -845,12 +849,14 @@ app.get('/api/analytics', async (req, res) => {
     const agentBreakdown = {};
     for (const r of all) {
       const agent = r.agentName || 'Unknown';
-      if (!agentBreakdown[agent]) agentBreakdown[agent] = { calls: 0, booked: 0, virtual: 0, notInterested: 0, hungUp: 0, voicemail: 0, callback: 0, noAnswer: 0, renter: 0, spanish: 0, durations: [] };
+      if (!agentBreakdown[agent]) agentBreakdown[agent] = { calls: 0, booked: 0, virtual: 0, notInterested: 0, hungUp: 0, hungUpUser: 0, hungUpBot: 0, voicemail: 0, callback: 0, noAnswer: 0, renter: 0, spanish: 0, durations: [] };
       agentBreakdown[agent].calls++;
       if (r.callOutcome === 'BOOKED') agentBreakdown[agent].booked++;
       if (r.callOutcome === 'VIRTUAL_MEETING_REQUESTED') agentBreakdown[agent].virtual++;
       if (r.callOutcome === 'NOT_INTERESTED') agentBreakdown[agent].notInterested++;
       if (['HUNG_UP', 'HUNG_UP_USER', 'HUNG_UP_BOT'].includes(r.callOutcome)) agentBreakdown[agent].hungUp++;
+      if (r.callOutcome === 'HUNG_UP_USER') agentBreakdown[agent].hungUpUser++;
+      if (r.callOutcome === 'HUNG_UP_BOT') agentBreakdown[agent].hungUpBot++;
       if (r.callOutcome === 'VOICEMAIL') agentBreakdown[agent].voicemail++;
       if (r.callOutcome === 'CALLBACK_REQUESTED') agentBreakdown[agent].callback++;
       if (r.callOutcome === 'NO_ANSWER') agentBreakdown[agent].noAnswer++;
