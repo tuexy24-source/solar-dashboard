@@ -13,9 +13,14 @@ const APPTS_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURICo
 const AIRTABLE_HEADERS = { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' };
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 
+// Retell agent IDs (legacy — kept for historical records)
 const AGENT_NAMES = {
   'agent_1e091e25b84ea5d6b51088aaed': 'Rebate Program',
-  'agent_458529f65d305930d071f2a93e': 'Reduced Energy'
+  'agent_458529f65d305930d071f2a93e': 'Reduced Energy',
+  // ── Vapi agent IDs — replace these after creating assistants in Vapi dashboard ──
+  'VAPI_JACOB_ASSISTANT_ID':  'Jacob (Rebate)',
+  'VAPI_ASHLEY_ASSISTANT_ID': 'Ashley (Empathetic)',
+  'VAPI_CATHY_ASSISTANT_ID':  'Cathy (Inbound)',
 };
 
 // ── Recording duration cache (probed from WAV headers) ──────────────────────
@@ -97,7 +102,7 @@ async function fetchAllRecords() {
       utilityCompany: f['Utility Company'] || '',
       calendarLink: f['Calendar Link'] || '',
       calculatedDate: f['Calculated Date'] || '',
-      retellCallId: f['Retell Call ID'] || '',
+      retellCallId: f['Call ID'] || f['Retell Call ID'] || '',
       agentId: f['Agent ID'] || '',
       agentName: AGENT_NAMES[f['Agent ID']] || f['Agent ID'] || 'Unknown',
       createdDate: f['Created Date'] || '',
@@ -231,6 +236,166 @@ app.use(express.static(path.join(__dirname, 'public'), {
   }
 }));
 
+// ── Vapi Webhook ─────────────────────────────────────────────────────────────
+
+// Maps Vapi endedReason → call outcome (fallback when submit_call_data wasn't called)
+const VAPI_DISCONNECTION_MAP = {
+  'customer-ended-call':                          'HUNG_UP',
+  'assistant-ended-call':                         'HUNG_UP',
+  'customer-did-not-answer':                      'NO_ANSWER',
+  'voicemail':                                    'VOICEMAIL',
+  'assistant-error':                              'NO_ANSWER',
+  'silence-timed-out':                            'HUNG_UP',
+  'phone-call-provider-closed-websocket-error':   'NO_ANSWER',
+  'customer-busy':                                'NO_ANSWER',
+  'exceeded-max-duration':                        'HUNG_UP',
+  'manually-canceled':                            'NO_ANSWER',
+  'pipeline-error':                               'NO_ANSWER',
+  'twilio-failed-to-connect-call':                'NO_ANSWER',
+};
+
+// Extract submit_call_data arguments from Vapi artifact.messages array
+function extractVapiToolCall(messages) {
+  if (!Array.isArray(messages)) return null;
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && Array.isArray(msg.toolCalls)) {
+      const tc = msg.toolCalls.find(t => t.function?.name === 'submit_call_data');
+      if (tc) {
+        try {
+          return typeof tc.function.arguments === 'string'
+            ? JSON.parse(tc.function.arguments)
+            : tc.function.arguments;
+        } catch { return null; }
+      }
+    }
+  }
+  return null;
+}
+
+// Real-time tool call handler — Vapi calls this mid-call when AI invokes submit_call_data.
+// Must respond quickly so the call continues. Actual CRM write happens in /vapi-webhook.
+app.post('/vapi-tool', (req, res) => {
+  try {
+    const { message } = req.body || {};
+    const toolCallList = message?.toolCallList || [];
+    const results = toolCallList.map(tc => ({
+      toolCallId: tc.id,
+      result: 'submitted'
+    }));
+    const rawArgs = toolCallList[0]?.function?.arguments;
+    const args = typeof rawArgs === 'string' ? (() => { try { return JSON.parse(rawArgs); } catch { return {}; } })() : (rawArgs || {});
+    const outcome = args.call_outcome || 'unknown';
+    const callId  = message?.call?.id || '';
+    console.log(`[VapiTool] call_id=${callId} outcome=${outcome}`);
+    res.json({ results });
+  } catch (err) {
+    console.error('[VapiTool] Error:', err.message);
+    res.status(500).json({ results: [] });
+  }
+});
+
+// End-of-call report — writes to Airtable
+app.post('/vapi-webhook', async (req, res) => {
+  res.json({ received: true });
+
+  try {
+    const msg = req.body?.message || {};
+
+    if (msg.type !== 'end-of-call-report') {
+      console.log(`[VapiWebhook] Ignored type: ${msg.type}`);
+      return;
+    }
+
+    const call     = msg.call     || {};
+    const artifact = msg.artifact || {};
+
+    const call_id       = call.id          || '';
+    const agent_id      = call.assistantId || '';
+    const to_number     = call.customer?.number || '';
+    const start_ts      = call.startedAt   || '';
+    const endedReason   = msg.endedReason  || '';
+    const durationSec   = msg.durationSeconds || 0;
+    const recording_url = artifact.recordingUrl || '';
+    const transcript    = artifact.transcript   || '';
+
+    // Tool call args from messages (what the AI submitted)
+    const toolData   = extractVapiToolCall(artifact.messages || []);
+    const agentOutcome = toolData?.call_outcome || null;
+    const fallback     = VAPI_DISCONNECTION_MAP[endedReason] || null;
+    const callOutcome  = agentOutcome || fallback;
+
+    if (!callOutcome) {
+      console.log(`[VapiWebhook] call_id=${call_id} — unrecognized endedReason="${endedReason}", skipping`);
+      return;
+    }
+
+    const calledDigits = normalizePhone(to_number);
+    if (!calledDigits) {
+      console.log(`[VapiWebhook] call_id=${call_id} — no customer number in payload, skipping`);
+      return;
+    }
+
+    const allRecords = await fetchAllRecords();
+    const lead = allRecords.find(r => normalizePhone(r.phone) === calledDigits);
+    if (!lead) {
+      console.log(`[VapiWebhook] call_id=${call_id} — no lead found for ${to_number}, skipping`);
+      return;
+    }
+
+    const newStatus    = OUTCOME_STATUS_MAP[callOutcome] || 'Needs Retry';
+    const lastCallDate = start_ts ? new Date(start_ts).toISOString() : new Date().toISOString();
+
+    const updateFields = {
+      'Call Outcome':   callOutcome,
+      'Status':         newStatus,
+      'Last Call Date': lastCallDate,
+      'Agent ID':       agent_id || '',
+      'Call ID':        call_id  || '',
+      'Attempt Count':  (lead.attemptCount || 0) + 1,
+    };
+
+    if (durationSec > 0)  updateFields['Call Duration']  = durationSec;
+    if (recording_url)    updateFields['Recording URLs'] = recording_url;
+    if (transcript)       updateFields['Transcript']     = transcript;
+
+    // Fields from submit_call_data()
+    if (toolData) {
+      if (toolData.electric_bill_range)    updateFields['Electric Bill']     = toolData.electric_bill_range;
+      if (toolData.home_age_year)          updateFields['Year Built']        = String(toolData.home_age_year);
+      if (toolData.roof_age_years != null) updateFields['Roof Age (Years)']  = Number(toolData.roof_age_years);
+      if (toolData.has_solar != null)      updateFields['Already Has Solar'] = !!toolData.has_solar;
+      if (toolData.gate_code)              updateFields['Gate Code']         = toolData.gate_code;
+      if (toolData.email)                  updateFields['Email']             = toolData.email;
+      if (toolData.spouse_phone)           updateFields['Spouse Phone']      = toolData.spouse_phone;
+      if (toolData.callback_date)          updateFields['Callback Date']     = toolData.callback_date;
+      if (toolData.callback_reason)        updateFields['Callback Reason']   = toolData.callback_reason;
+      if (toolData.other_utility)          updateFields['Utility Company']   = toolData.other_utility;
+      if (toolData.credit_above_650 != null) {
+        updateFields['Credit 650+'] = toolData.credit_above_650 === true || toolData.credit_above_650 === 'true';
+      }
+    }
+
+    if (callOutcome === 'DNC_REQUESTED') updateFields['DNC Flag'] = true;
+
+    const resp = await fetch(`${AIRTABLE_URL}/${lead.id}`, {
+      method: 'PATCH',
+      headers: AIRTABLE_HEADERS,
+      body: JSON.stringify({ fields: updateFields })
+    });
+
+    if (!resp.ok) {
+      console.error(`[VapiWebhook] Airtable PATCH failed for lead ${lead.id}:`, await resp.text());
+      return;
+    }
+
+    cache.ts = 0;
+    console.log(`[VapiWebhook] ✓ ${lead.firstName} ${lead.lastName} | ${to_number} | outcome=${callOutcome} | status=${newStatus} | reason=${endedReason}${agentOutcome ? '' : ' (fallback)'}`);
+
+  } catch (err) {
+    console.error('[VapiWebhook] Unhandled error:', err.message);
+  }
+});
+
 // ── Retell Webhook ───────────────────────────────────────────────────────────
 
 // Maps Retell disconnection_reason → call outcome for calls that never connected
@@ -338,6 +503,7 @@ app.post('/retell-webhook', async (req, res) => {
     // Only write these if the call actually produced data (connected calls)
     if (durationSec > 0)  updateFields['Call Duration']    = durationSec;
     if (recording_url)    updateFields['Recording URLs']   = recording_url;
+    if (transcript)       updateFields['Transcript']       = transcript;
 
     // Extra fields from submit_call_data() — only set when present
     if (customData.electric_bill_range)   updateFields['Electric Bill']    = customData.electric_bill_range;

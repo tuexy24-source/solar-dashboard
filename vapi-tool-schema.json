@@ -1,0 +1,94 @@
+{
+  "type": "function",
+  "function": {
+    "name": "submit_call_data",
+    "description": "Submit call outcome and all collected data to the CRM. ALWAYS call this before ending the call — no exceptions.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "call_outcome": {
+          "type": "string",
+          "enum": [
+            "BOOKED",
+            "NOT_INTERESTED",
+            "DNC_REQUESTED",
+            "HUNG_UP",
+            "NO_ANSWER",
+            "VOICEMAIL",
+            "ALREADY_HAS_SOLAR",
+            "RENTER",
+            "LOW_BILL",
+            "BAD_NUMBER",
+            "CALLBACK_REQUESTED",
+            "VIRTUAL_MEETING_REQUESTED",
+            "RESCHEDULED",
+            "CANCELLED"
+          ],
+          "description": "The final outcome of the call"
+        },
+        "phone_number": {
+          "type": "string",
+          "description": "The prospect's phone number"
+        },
+        "appointment_date": {
+          "type": "string",
+          "description": "Appointment date in YYYY-MM-DD format — required for BOOKED and VIRTUAL_MEETING_REQUESTED"
+        },
+        "appointment_time": {
+          "type": "string",
+          "description": "Appointment time window e.g. '2-4 PM'"
+        },
+        "callback_date": {
+          "type": "string",
+          "description": "Callback date in YYYY-MM-DD format — required for CALLBACK_REQUESTED"
+        },
+        "callback_reason": {
+          "type": "string",
+          "description": "Brief reason for the callback e.g. 'spouse not home', 'busy call back Friday'"
+        },
+        "spouse_phone": {
+          "type": "string",
+          "description": "Spouse or co-owner's direct phone number if collected"
+        },
+        "email": {
+          "type": "string",
+          "description": "Prospect's email address — required for VIRTUAL_MEETING_REQUESTED"
+        },
+        "electric_bill_range": {
+          "type": "string",
+          "description": "Monthly electric bill amount or range e.g. '$200-250' or '$300+'"
+        },
+        "home_age_year": {
+          "type": "string",
+          "description": "Year the home was built e.g. '1985'"
+        },
+        "roof_age_years": {
+          "type": "number",
+          "description": "Age of the roof in years as a number"
+        },
+        "has_solar": {
+          "type": "boolean",
+          "description": "Whether the home already has solar panels installed"
+        },
+        "credit_above_650": {
+          "type": "string",
+          "enum": ["true", "false", "unknown"],
+          "description": "Whether the prospect's credit score is above 650"
+        },
+        "gate_code": {
+          "type": "string",
+          "description": "Gate or community entry code if applicable"
+        },
+        "other_utility": {
+          "type": "string",
+          "description": "Utility company name if the prospect is NOT with F P and L"
+        }
+      },
+      "required": ["call_outcome"]
+    }
+  },
+  "server": {
+    "url": "https://solar-dashboard-production-1cba.up.railway.app/vapi-tool",
+    "timeoutSeconds": 10
+  }
+}
