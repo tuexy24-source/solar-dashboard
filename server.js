@@ -223,6 +223,46 @@ setInterval(async () => {
   catch (e) { console.error('Background poll error:', e.message); }
 }, 30_000);
 
+// ── Stale call cleanup — resets records stuck in "Currently Calling" or "Contacted" ──
+const callingTracker = new Map(); // recordId -> timestamp when first seen as stuck
+const STALE_STATUSES = new Set(['Currently Calling', 'Contacted']);
+const STALE_CUTOFF_MS = 15 * 60 * 1000; // 15 minutes
+
+setInterval(async () => {
+  try {
+    const records = await fetchAllRecords();
+    const now = Date.now();
+    const toReset = [];
+
+    for (const r of records) {
+      if (STALE_STATUSES.has(r.status)) {
+        if (!callingTracker.has(r.id)) {
+          callingTracker.set(r.id, now);
+        } else if (now - callingTracker.get(r.id) > STALE_CUTOFF_MS) {
+          toReset.push(r);
+        }
+      } else {
+        callingTracker.delete(r.id);
+      }
+    }
+
+    for (const r of toReset) {
+      const resp = await fetch(`${AIRTABLE_URL}/${r.id}`, {
+        method: 'PATCH',
+        headers: AIRTABLE_HEADERS,
+        body: JSON.stringify({ fields: { 'Status': 'Needs Retry', 'Call Outcome': 'NO_ANSWER' } })
+      });
+      if (resp.ok) {
+        callingTracker.delete(r.id);
+        cache.ts = 0;
+        console.log(`[Cleanup] Reset stale "${r.status}" → Needs Retry: ${r.firstName} ${r.lastName}`);
+      }
+    }
+  } catch (e) {
+    console.error('[Cleanup] Error:', e.message);
+  }
+}, 60_000); // runs every 60 seconds
+
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 // No-cache for HTML so browser always gets latest
@@ -330,18 +370,21 @@ app.post('/vapi-webhook', async (req, res) => {
     }
 
     if (!callOutcome) {
-      console.log(`[VapiWebhook] call_id=${call_id} — unrecognized endedReason="${endedReason}", skipping`);
-      return;
+      callOutcome = 'NO_ANSWER'; // never skip — always clear Currently Calling/Contacted
+      console.log(`[VapiWebhook] call_id=${call_id} — unrecognized endedReason="${endedReason}", using NO_ANSWER fallback`);
     }
 
     const calledDigits = normalizePhone(to_number);
-    if (!calledDigits) {
-      console.log(`[VapiWebhook] call_id=${call_id} — no customer number in payload, skipping`);
+    const allRecords = await fetchAllRecords();
+    let lead = calledDigits
+      ? allRecords.find(r => normalizePhone(r.phone) === calledDigits)
+      : allRecords.find(r => r.retellCallId === call_id); // fallback for Twilio failures with no number
+
+    if (!calledDigits && !lead) {
+      // Last resort: find any Currently Calling / Contacted record we can tie to this call
+      console.log(`[VapiWebhook] call_id=${call_id} — no customer number in payload, can't match lead`);
       return;
     }
-
-    const allRecords = await fetchAllRecords();
-    const lead = allRecords.find(r => normalizePhone(r.phone) === calledDigits);
     if (!lead) {
       console.log(`[VapiWebhook] call_id=${call_id} — no lead found for ${to_number}, skipping`);
       return;
