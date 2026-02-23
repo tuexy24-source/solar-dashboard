@@ -18,8 +18,8 @@ const AGENT_NAMES = {
   'agent_1e091e25b84ea5d6b51088aaed': 'Rebate Program',
   'agent_458529f65d305930d071f2a93e': 'Reduced Energy',
   // ── Vapi agent IDs — replace these after creating assistants in Vapi dashboard ──
-  'VAPI_JACOB_ASSISTANT_ID':  'Jacob (Rebate)',
-  'VAPI_ASHLEY_ASSISTANT_ID': 'Ashley (Empathetic)',
+  '6de49c9e-3fb9-4a61-9470-62597c31bf30':  'Jacob (Rebate)',
+  '7de03dcd-c50c-477f-b473-62a2a409f779': 'Ashley (Empathetic)',
   'VAPI_CATHY_ASSISTANT_ID':  'Cathy (Inbound)',
 };
 
