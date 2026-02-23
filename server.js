@@ -224,7 +224,7 @@ setInterval(async () => {
 }, 30_000);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 // No-cache for HTML so browser always gets latest
 app.use(express.static(path.join(__dirname, 'public'), {
   setHeaders: (res, filePath) => {
