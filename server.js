@@ -336,7 +336,8 @@ app.post('/retell-webhook', async (req, res) => {
     };
 
     // Only write these if the call actually produced data (connected calls)
-    if (durationSec > 0) updateFields['Call Duration'] = durationSec;
+    if (durationSec > 0)  updateFields['Call Duration']    = durationSec;
+    if (recording_url)    updateFields['Recording URLs']   = recording_url;
 
     // Extra fields from submit_call_data() — only set when present
     if (customData.electric_bill_range)   updateFields['Electric Bill']    = customData.electric_bill_range;
