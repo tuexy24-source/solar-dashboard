@@ -406,7 +406,8 @@ app.post('/vapi-webhook', async (req, res) => {
         lead_airtable_id:    lead.id,
         call_id:             call_id,
         agent_id:            agent_id,
-        agent_name:          AGENT_NAMES[agent_id]         || agent_id
+        agent_name:          AGENT_NAMES[agent_id]         || agent_id,
+        recording_url:       recording_url                 || ''
       };
       fetch('https://hook.us2.make.com/4tluqmvxulodpx0sr7yaokqhh6tatd6a', {
         method: 'POST',
