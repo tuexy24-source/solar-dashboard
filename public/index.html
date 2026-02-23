@@ -139,7 +139,7 @@ tbody tr:last-child td{border-bottom:none}
 .b-booked{background:var(--gbg);color:var(--gt)}.b-callback{background:var(--ybg);color:var(--yt)}
 .b-ready{background:var(--bbg);color:var(--bt)}.b-dnc{background:var(--rbg);color:var(--rt)}
 .b-contacted{background:var(--accents);color:var(--accentt)}.b-calling{background:var(--pbg);color:var(--pt)}
-.b-retry{background:var(--ybg);color:var(--yt)}.b-def{background:var(--bgh);color:var(--text2)}
+.b-retry{background:var(--ybg);color:var(--yt)}.b-def{background:var(--bgh);color:var(--text2)}.b-orange{background:#431407;color:#f97316}
 /* pulsing dot for currently calling */
 .calldot{width:6px;height:6px;border-radius:50%;background:var(--p);animation:pulse .8s infinite}
 
@@ -570,8 +570,8 @@ function fmtSec(sec){if(!sec||isNaN(sec)||!isFinite(sec))return'0:00';const m=Ma
 function tpct(c,p){if(p===0&&c===0)return{t:'0%',c:'flat'};if(p===0)return{t:'+\u221E',c:'up'};const v=Math.round(((c-p)/p)*100);return v>0?{t:'+'+v+'%',c:'up'}:v<0?{t:v+'%',c:'dn'}:{t:'0%',c:'flat'}}
 function bcls(st){const s=(st||'').toLowerCase();if(s==='booked')return'b-booked';if(s==='callback requested')return'b-callback';if(s==='ready to call')return'b-ready';if(s==='dnc'||s==='do not call')return'b-dnc';if(s==='contacted')return'b-contacted';if(s==='currently calling')return'b-calling';if(s==='needs retry')return'b-retry';return'b-def'}
 function bicon(st){const s=(st||'').toLowerCase();if(s==='booked')return'\u2705';if(s==='callback requested')return'\uD83D\uDCDE';if(s==='needs retry')return'\uD83D\uDD04';if(s==='dnc')return'\u274C';if(s==='currently calling')return'<span class="calldot"></span>';if(s==='contacted')return'\uD83D\uDCE1';return''}
-function fmtOCLabel(k){const m={BOOKED:'Booked',VIRTUAL_MEETING_REQUESTED:'Virtual Mtg',CALLBACK_REQUESTED:'Callback',NOT_INTERESTED:'Not Interested',DNC_REQUESTED:'DNC',HUNG_UP:'Hung Up',NO_ANSWER:'No Answer',VOICEMAIL:'Voicemail',ALREADY_HAS_SOLAR:'Has Solar',RENTER:'Renter',LOW_BILL:'Low Bill',BAD_NUMBER:'Bad #',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled'};return m[k]||k;}
-function fmtOC(oc){if(!oc)return'\u2014';const m={BOOKED:{l:'Booked',c:'b-booked'},VIRTUAL_MEETING_REQUESTED:{l:'Virtual Mtg',c:'b-booked'},CALLBACK_REQUESTED:{l:'Callback',c:'b-callback'},RESCHEDULED:{l:'Rescheduled',c:'b-callback'},NOT_INTERESTED:{l:'Not Interested',c:'b-retry'},DNC_REQUESTED:{l:'DNC',c:'b-dnc'},CANCELLED:{l:'Cancelled',c:'b-dnc'},BAD_NUMBER:{l:'Bad #',c:'b-dnc'},HUNG_UP:{l:'Hung Up',c:'b-def'},NO_ANSWER:{l:'No Answer',c:'b-def'},VOICEMAIL:{l:'Voicemail',c:'b-def'},ALREADY_HAS_SOLAR:{l:'Has Solar',c:'b-retry'},RENTER:{l:'Renter',c:'b-retry'},LOW_BILL:{l:'Low Bill',c:'b-retry'}};const e=m[oc];return e?`<span class="badge ${e.c}">${e.l}</span>`:`<span class="badge b-def">${esc(oc)}</span>`;}
+function fmtOCLabel(k){const m={BOOKED:'Booked',VIRTUAL_MEETING_REQUESTED:'Virtual Mtg',CALLBACK_REQUESTED:'Callback',NOT_INTERESTED:'Not Interested',DNC_REQUESTED:'DNC',HUNG_UP:'Hung Up',HUNG_UP_USER:'Hung Up (User)',HUNG_UP_BOT:'Hung Up (Bot)',NO_ANSWER:'No Answer',VOICEMAIL:'Voicemail',ALREADY_HAS_SOLAR:'Has Solar',RENTER:'Renter',LOW_BILL:'Low Bill',BAD_NUMBER:'Bad #',RESCHEDULED:'Rescheduled',CANCELLED:'Cancelled'};return m[k]||k;}
+function fmtOC(oc){if(!oc)return'\u2014';const m={BOOKED:{l:'Booked',c:'b-booked'},VIRTUAL_MEETING_REQUESTED:{l:'Virtual Mtg',c:'b-booked'},CALLBACK_REQUESTED:{l:'Callback',c:'b-callback'},RESCHEDULED:{l:'Rescheduled',c:'b-callback'},NOT_INTERESTED:{l:'Not Interested',c:'b-retry'},DNC_REQUESTED:{l:'DNC',c:'b-dnc'},CANCELLED:{l:'Cancelled',c:'b-dnc'},BAD_NUMBER:{l:'Bad #',c:'b-dnc'},HUNG_UP:{l:'Hung Up',c:'b-def'},HUNG_UP_USER:{l:'Hung Up (User)',c:'b-def'},HUNG_UP_BOT:{l:'Hung Up (Bot)',c:'b-orange'},NO_ANSWER:{l:'No Answer',c:'b-def'},VOICEMAIL:{l:'Voicemail',c:'b-def'},ALREADY_HAS_SOLAR:{l:'Has Solar',c:'b-retry'},RENTER:{l:'Renter',c:'b-retry'},LOW_BILL:{l:'Low Bill',c:'b-retry'}};const e=m[oc];return e?`<span class="badge ${e.c}">${e.l}</span>`:`<span class="badge b-def">${esc(oc)}</span>`;}
 function genWF(url,n=45){if(wfCache.has(url))return wfCache.get(url);let h=0;for(let i=0;i<url.length;i++)h=((h<<5)-h+url.charCodeAt(i))|0;const bars=[];for(let i=0;i<n;i++){h=(h*16807)&0x7fffffff;bars.push(.12+(h%1000)/1000*.88)}wfCache.set(url,bars);return bars}
 
 /* ══════════════ AUDIO ══════════════ */
@@ -863,7 +863,7 @@ async function loadAna(){try{const d=await apiAnalytics();const dk=document.docu
   Chart.defaults.font.family="'Inter',sans-serif";Chart.defaults.color=tc;killCharts();
   const pal=['#6366f1','#22c55e','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16','#14b8a6','#f97316'];
   const ol=Object.keys(d.outcomeCounts).sort((a,b)=>d.outcomeCounts[b]-d.outcomeCounts[a]);
-  const ocColors={BOOKED:'#22c55e',VIRTUAL_MEETING_REQUESTED:'#06b6d4',CALLBACK_REQUESTED:'#f59e0b',NOT_INTERESTED:'#f97316',DNC_REQUESTED:'#ef4444',HUNG_UP:'#6b7280',NO_ANSWER:'#94a3b8',VOICEMAIL:'#a78bfa',ALREADY_HAS_SOLAR:'#84cc16',RENTER:'#14b8a6',LOW_BILL:'#fbbf24',BAD_NUMBER:'#f87171',RESCHEDULED:'#60a5fa',CANCELLED:'#fb923c'};
+  const ocColors={BOOKED:'#22c55e',VIRTUAL_MEETING_REQUESTED:'#06b6d4',CALLBACK_REQUESTED:'#f59e0b',NOT_INTERESTED:'#f97316',DNC_REQUESTED:'#ef4444',HUNG_UP:'#6b7280',HUNG_UP_USER:'#6b7280',HUNG_UP_BOT:'#f97316',NO_ANSWER:'#94a3b8',VOICEMAIL:'#a78bfa',ALREADY_HAS_SOLAR:'#84cc16',RENTER:'#14b8a6',LOW_BILL:'#fbbf24',BAD_NUMBER:'#f87171',RESCHEDULED:'#60a5fa',CANCELLED:'#fb923c'};
   charts.c1=new Chart($('#ch1'),{type:'doughnut',data:{labels:ol.map(fmtOCLabel),datasets:[{data:ol.map(k=>d.outcomeCounts[k]),backgroundColor:ol.map(k=>ocColors[k]||'#6366f1'),borderWidth:0}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{padding:14,usePointStyle:true,pointStyle:'circle'}}}}});
   charts.c2=new Chart($('#ch2'),{type:'bar',data:{labels:d.hourly.map((_,i)=>i<12?(i||12)+'a':((i-12)||12)+'p'),datasets:[{label:'Calls',data:d.hourly,backgroundColor:'#6366f1',borderRadius:4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,grid:{color:gc}},x:{grid:{display:false}}}}});
   const dl=Object.keys(d.daily).sort();
@@ -1012,7 +1012,7 @@ async function load(silent=false){if(!silent)rSkel();
   catch(e){console.error(e);if(!silent)toast('Failed to load data','w')}}
 
 /* ══════════════ CALL ANALYSIS ══════════════ */
-function ocColor(o){o=(o||'').toUpperCase();if(o==='BOOKED')return'var(--g)';if(o.includes('CALLBACK'))return'var(--y)';if(o==='NOT_INTERESTED')return'var(--r)';if(o==='HUNG_UP')return'#f97316';if(o==='NO_ANSWER'||o==='VOICEMAIL')return'var(--text3)';if(o==='DNC_REQUESTED')return'var(--r)';return'var(--accent)'}
+function ocColor(o){o=(o||'').toUpperCase();if(o==='BOOKED')return'var(--g)';if(o.includes('CALLBACK'))return'var(--y)';if(o==='NOT_INTERESTED')return'var(--r)';if(o==='HUNG_UP_BOT')return'#f97316';if(o==='HUNG_UP_USER'||o==='HUNG_UP')return'#6b7280';if(o==='NO_ANSWER'||o==='VOICEMAIL')return'var(--text3)';if(o==='DNC_REQUESTED')return'var(--r)';return'var(--accent)'}
 
 async function loadCA(){
   const di=$('#anaDate');

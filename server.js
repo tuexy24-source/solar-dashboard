@@ -240,15 +240,15 @@ app.use(express.static(path.join(__dirname, 'public'), {
 
 // Maps Vapi endedReason → call outcome (fallback when submit_call_data wasn't called)
 const VAPI_DISCONNECTION_MAP = {
-  'customer-ended-call':                          'HUNG_UP',
-  'assistant-ended-call':                         'HUNG_UP',
+  'customer-ended-call':                          'HUNG_UP_USER',
+  'assistant-ended-call':                         'HUNG_UP_BOT',
   'customer-did-not-answer':                      'NO_ANSWER',
   'voicemail':                                    'VOICEMAIL',
   'assistant-error':                              'NO_ANSWER',
-  'silence-timed-out':                            'HUNG_UP',
+  'silence-timed-out':                            'HUNG_UP_BOT',
   'phone-call-provider-closed-websocket-error':   'NO_ANSWER',
   'customer-busy':                                'NO_ANSWER',
-  'exceeded-max-duration':                        'HUNG_UP',
+  'exceeded-max-duration':                        'HUNG_UP_BOT',
   'manually-canceled':                            'NO_ANSWER',
   'pipeline-error':                               'NO_ANSWER',
   'twilio-failed-to-connect-call':                'NO_ANSWER',
@@ -322,7 +322,12 @@ app.post('/vapi-webhook', async (req, res) => {
     const toolData   = extractVapiToolCall(artifact.messages || []);
     const agentOutcome = toolData?.call_outcome || null;
     const fallback     = VAPI_DISCONNECTION_MAP[endedReason] || null;
-    const callOutcome  = agentOutcome || fallback;
+    let callOutcome    = agentOutcome || fallback;
+    // Refine generic HUNG_UP into user vs bot using endedReason
+    if (callOutcome === 'HUNG_UP') {
+      if (['customer-ended-call', 'user_hangup'].includes(endedReason)) callOutcome = 'HUNG_UP_USER';
+      else if (['assistant-ended-call', 'agent_hangup', 'inactivity', 'silence-timed-out', 'exceeded-max-duration'].includes(endedReason)) callOutcome = 'HUNG_UP_BOT';
+    }
 
     if (!callOutcome) {
       console.log(`[VapiWebhook] call_id=${call_id} — unrecognized endedReason="${endedReason}", skipping`);
@@ -435,9 +440,9 @@ const DISCONNECTION_OUTCOME_MAP = {
   'error_llm_websocket':       'NO_ANSWER',
   'error_inbound_webhook':     'NO_ANSWER',
   'concurrency_limit_reached': 'NO_ANSWER',
-  'user_hangup':               'HUNG_UP',
-  'inactivity':                'HUNG_UP',
-  'agent_hangup':              'HUNG_UP',
+  'user_hangup':               'HUNG_UP_USER',
+  'inactivity':                'HUNG_UP_BOT',
+  'agent_hangup':              'HUNG_UP_BOT',
 };
 
 // Maps call outcome → Airtable Status value
@@ -454,6 +459,8 @@ const OUTCOME_STATUS_MAP = {
   'NO_ANSWER':                 'Needs Retry',
   'VOICEMAIL':                 'Needs Retry',
   'HUNG_UP':                   'Needs Retry',
+  'HUNG_UP_USER':              'Needs Retry',
+  'HUNG_UP_BOT':               'Needs Retry',
 };
 
 function normalizePhone(p) {
@@ -800,7 +807,7 @@ app.get('/api/analytics', async (req, res) => {
       if (r.callOutcome === 'BOOKED') agentBreakdown[agent].booked++;
       if (r.callOutcome === 'VIRTUAL_MEETING_REQUESTED') agentBreakdown[agent].virtual++;
       if (r.callOutcome === 'NOT_INTERESTED') agentBreakdown[agent].notInterested++;
-      if (r.callOutcome === 'HUNG_UP') agentBreakdown[agent].hungUp++;
+      if (['HUNG_UP', 'HUNG_UP_USER', 'HUNG_UP_BOT'].includes(r.callOutcome)) agentBreakdown[agent].hungUp++;
       if (r.callOutcome === 'VOICEMAIL') agentBreakdown[agent].voicemail++;
       if (r.callOutcome === 'CALLBACK_REQUESTED') agentBreakdown[agent].callback++;
       if (r.callOutcome === 'NO_ANSWER') agentBreakdown[agent].noAnswer++;
