@@ -254,11 +254,11 @@ const OUTCOME_STATUS_MAP = {
   'VIRTUAL_MEETING_REQUESTED': 'Booked',
   'DNC_REQUESTED':             'DNC',
   'CALLBACK_REQUESTED':        'Callback Requested',
-  'NOT_INTERESTED':            'DNQ',
-  'RENTER':                    'DNQ',
-  'LOW_BILL':                  'DNQ',
-  'ALREADY_HAS_SOLAR':         'DNQ',
-  'BAD_NUMBER':                'DNQ',
+  'NOT_INTERESTED':            'Not Interested',
+  'RENTER':                    'Not Interested',
+  'LOW_BILL':                  'Not Interested',
+  'ALREADY_HAS_SOLAR':         'Not Interested',
+  'BAD_NUMBER':                'Bad Number',
   'NO_ANSWER':                 'Needs Retry',
   'VOICEMAIL':                 'Needs Retry',
   'HUNG_UP':                   'Needs Retry',
@@ -327,19 +327,16 @@ app.post('/retell-webhook', async (req, res) => {
 
     // Core fields — always written regardless of whether the call connected
     const updateFields = {
-      'Call Outcome':    callOutcome,
-      'Status':          newStatus,
-      'Last Call Date':  lastCallDate,
-      'Last Call Status': disconnection_reason || '',
-      'Agent ID':        agent_id || '',
-      'Retell Call ID':  call_id  || '',
-      'Attempt Count':   (lead.attemptCount || 0) + 1,
+      'Call Outcome':   callOutcome,
+      'Status':         newStatus,
+      'Last Call Date': lastCallDate,
+      'Agent ID':       agent_id || '',
+      'Retell Call ID': call_id  || '',
+      'Attempt Count':  (lead.attemptCount || 0) + 1,
     };
 
     // Only write these if the call actually produced data (connected calls)
-    if (durationSec  > 0)  updateFields['Call Duration']    = durationSec;
-    if (recording_url)     updateFields['Latest Recording'] = recording_url;
-    if (transcript)        updateFields['Transcript']       = transcript;
+    if (durationSec > 0) updateFields['Call Duration'] = durationSec;
 
     // Extra fields from submit_call_data() — only set when present
     if (customData.electric_bill_range)   updateFields['Electric Bill']    = customData.electric_bill_range;
@@ -355,10 +352,8 @@ app.post('/retell-webhook', async (req, res) => {
       updateFields['Credit 650+'] = customData.credit_above_650 === true || customData.credit_above_650 === 'true';
     }
 
-    // DNC — set the flag and date so suppression view catches it immediately
     if (callOutcome === 'DNC_REQUESTED') {
       updateFields['DNC Flag'] = true;
-      updateFields['DNC Date'] = lastCallDate.split('T')[0];
     }
 
     const resp = await fetch(`${AIRTABLE_URL}/${lead.id}`, {
