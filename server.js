@@ -407,7 +407,8 @@ app.post('/vapi-webhook', async (req, res) => {
         call_id:             call_id,
         agent_id:            agent_id,
         agent_name:          AGENT_NAMES[agent_id]         || agent_id,
-        recording_url:       recording_url                 || ''
+        recording_url:       recording_url                 || '',
+        transcript:          transcript                    || ''
       };
       fetch('https://hook.us2.make.com/4tluqmvxulodpx0sr7yaokqhh6tatd6a', {
         method: 'POST',
