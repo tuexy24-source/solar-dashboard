@@ -341,7 +341,13 @@ app.post('/vapi-webhook', async (req, res) => {
   res.json({ received: true });
 
   try {
-    const msg = req.body?.message || {};
+    // DEBUG — log raw payload shape so we can verify Vapi's structure
+    const bodyKeys = Object.keys(req.body || {});
+    const msgType  = req.body?.message?.type || req.body?.type || '(none)';
+    console.log(`[VapiWebhook] RAW keys=${JSON.stringify(bodyKeys)} type=${msgType}`);
+    if (bodyKeys.length) console.log(`[VapiWebhook] RAW body=${JSON.stringify(req.body).slice(0, 600)}`);
+
+    const msg = req.body?.message || req.body || {};
 
     if (msg.type !== 'end-of-call-report') {
       console.log(`[VapiWebhook] Ignored type: ${msg.type}`);
