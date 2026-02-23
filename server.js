@@ -391,31 +391,31 @@ app.post('/vapi-webhook', async (req, res) => {
     cache.ts = 0;
     console.log(`[VapiWebhook] ✓ ${lead.firstName} ${lead.lastName} | ${to_number} | outcome=${callOutcome} | status=${newStatus} | reason=${endedReason}${agentOutcome ? '' : ' (fallback)'}`);
 
-    // Forward BOOKED / VIRTUAL to Make for Appointments record creation
+    // Create Appointments record for BOOKED and VIRTUAL_MEETING_REQUESTED
     if (callOutcome === 'BOOKED' || callOutcome === 'VIRTUAL_MEETING_REQUESTED') {
-      const makePayload = {
-        call_outcome:        callOutcome,
-        phone_number:        to_number,
-        first_name:          lead.firstName,
-        last_name:           lead.lastName,
-        appointment_date:    toolData?.appointment_date    || '',
-        appointment_time:    toolData?.appointment_time    || '',
-        email:               toolData?.email               || lead.email || '',
-        electric_bill_range: toolData?.electric_bill_range || lead.electricBill || '',
-        gate_code:           toolData?.gate_code           || '',
-        lead_airtable_id:    lead.id,
-        call_id:             call_id,
-        agent_id:            agent_id,
-        agent_name:          AGENT_NAMES[agent_id]         || agent_id,
-        recording_url:       recording_url                 || '',
-        transcript:          transcript                    || ''
+      const apptFields = {
+        'First Name':       lead.firstName,
+        'Last Name':        lead.lastName,
+        'Phone':            to_number,
+        'Email':            toolData?.email               || lead.email || '',
+        'Appointment Date': toolData?.appointment_date    || '',
+        'Appointment Time': toolData?.appointment_time    || '',
+        'Appointment Type': callOutcome === 'BOOKED' ? 'IN_PERSON' : 'VIRTUAL_MEETING',
+        'Outbound Lead':    [lead.id],
+        'Call Outcome':     callOutcome,
+        'Gate Code':        toolData?.gate_code           || '',
       };
-      fetch('https://hook.us2.make.com/4tluqmvxulodpx0sr7yaokqhh6tatd6a', {
+      const apptResp = await fetch(APPTS_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(makePayload)
-      }).catch(e => console.error('[VapiWebhook] Make forward failed:', e.message));
-      console.log(`[VapiWebhook] Forwarded ${callOutcome} to Make for ${lead.firstName} ${lead.lastName}`);
+        headers: AIRTABLE_HEADERS,
+        body: JSON.stringify({ fields: apptFields })
+      });
+      if (apptResp.ok) {
+        const apptData = await apptResp.json();
+        console.log(`[VapiWebhook] ✓ Appointment created: ${apptData.id} for ${lead.firstName} ${lead.lastName}`);
+      } else {
+        console.error(`[VapiWebhook] Appointment creation failed:`, await apptResp.text());
+      }
     }
 
   } catch (err) {
